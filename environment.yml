@@ -1,0 +1,9 @@
+name: deep-watermarking
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -e .[training,tracking,dev]

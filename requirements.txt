@@ -1,0 +1,3 @@
+# Install the CPU or CUDA-specific PyTorch wheels according to https://pytorch.org/get-started/locally/.
+# This file intentionally keeps torch unpinned to a CUDA build; see pyproject.toml for the version floor.
+-e .[training,tracking,dev]

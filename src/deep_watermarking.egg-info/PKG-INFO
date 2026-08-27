@@ -1,0 +1,65 @@
+Metadata-Version: 2.4
+Name: deep-watermarking
+Version: 0.1.0
+Summary: Reproducible research framework for invisible DWT-SVD image watermarking.
+Author: Deep Watermarking Research Team
+License: MIT
+Requires-Python: <3.13,>=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: numpy<3,>=2.0
+Requires-Dist: scipy<2,>=1.13
+Requires-Dist: PyWavelets<2,>=1.6
+Requires-Dist: opencv-python<5,>=4.10
+Requires-Dist: scikit-image<1,>=0.24
+Requires-Dist: PyYAML<7,>=6.0
+Requires-Dist: pydantic<3,>=2.8
+Provides-Extra: training
+Requires-Dist: torch>=2.4; extra == "training"
+Requires-Dist: torchvision>=0.19; extra == "training"
+Provides-Extra: tracking
+Requires-Dist: mlflow<4,>=2.15; extra == "tracking"
+Requires-Dist: dvc<4,>=3.50; extra == "tracking"
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8.3; extra == "dev"
+Requires-Dist: pytest-cov<7,>=5; extra == "dev"
+Requires-Dist: ruff<1,>=0.6; extra == "dev"
+
+# Deep Watermarking
+
+Research framework for an invisible, blind image watermarking study based on a reproducible DWT–SVD–CNN baseline. This directory is intentionally independent from the Dayflow application in the parent workspace.
+
+## Project status
+
+Phase 0 is documented in [`docs/phase0`](docs/phase0). Phase 1 repository scaffolding is present, but the local machine must provide Python **3.12.x** before dependencies can be installed and validated. Python 3.14 is deliberately not used because the research protocol specifies 3.12.
+
+## Planned structure
+
+```text
+configs/       reproducible experiment configurations
+data/          DVC-managed datasets (not committed to Git)
+docs/          research and operational documentation
+src/           research implementation
+tests/         automated tests
+experiments/   experiment definitions
+models/        ignored checkpoints
+results/       ignored outputs
+```
+
+## Local setup (after Python 3.12 is available)
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[training,tracking,dev]"
+pytest
+```
+
+For PyTorch, select a CPU/CUDA wheel appropriate to the machine using the official PyTorch installer guidance before running training. Phase 1 will record the resulting Torch/CUDA configuration; it will not assume GPU availability.
+
+## Reproducibility rules
+
+- Python requirement: `>=3.12,<3.13`.
+- No host dataset, checkpoints, result images, MLflow artifacts, or secrets are committed.
+- Experiment code belongs in `src/`; the API and frontend, when introduced, call this code rather than duplicating its mathematics.
+- Each future experiment will be run from a committed YAML configuration and fixed seed.

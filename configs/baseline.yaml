@@ -1,0 +1,19 @@
+# Phase 6 — frozen DWT-SVD baseline.
+# Once the Phase 6 results are accepted this file must not change; later phases
+# add their own configs and compare against these numbers.
+baseline:
+  wavelet: haar
+  mode: symmetric
+  subband: LL
+  start_sv_index: 0
+  embedding_rule: multiplicative_relative   # S'[i] = S[i] * (1 + alpha * (2*b - 1))
+  alphas: [0.005, 0.010, 0.015]
+  # 8..128 fit the LL subband alone (128 singular values for a 256x256 image).
+  # 256 is characterised with a documented multi-subband overflow (LL then HL);
+  # 512/1024 need a multi-level DWT and are left to Phase 12 (high-capacity study).
+  payload_bits: [8, 16, 32, 64, 128, 256]
+  extraction: non_blind                     # compares watermarked vs original singular values
+  seed: 20260827
+  eval_split: test                          # data/processed/div2k_256/test (IDs 801-900, held out)
+  eval_num_images: 40
+  results_dir: results/phase6_baseline

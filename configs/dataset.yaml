@@ -1,0 +1,17 @@
+dataset:
+  name: div2k_public_hr_resplit
+  source: "https://data.vision.ee.ethz.ch/cvl/DIV2K/"
+  license: "Academic research only; copyright remains with original owners."
+  raw_archive_dir: data/raw/archives
+  extracted_dir: data/raw/div2k_hr
+  processed_dir: data/processed/div2k_256
+  image_size: 256
+  interpolation: area
+  splits:
+    train: [1, 700]
+    validation: [701, 800]
+    test: [801, 900]
+  expected_counts:
+    train: 700
+    validation: 100
+    test: 100

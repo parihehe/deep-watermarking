@@ -1,0 +1,27 @@
+# Python environments and generated Python files
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data, checkpoints, tracking, and experiment outputs
+data/raw/**
+data/processed/**
+data/generated/**
+data/external/**
+!data/**/.gitkeep
+models/**
+results/**
+mlruns/
+artifacts/
+*.pt
+*.pth
+*.ckpt
+
+# Secrets and local services
+.env
+.env.*
+!*.example
+postgres-data/
