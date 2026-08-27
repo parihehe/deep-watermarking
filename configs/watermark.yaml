@@ -1,0 +1,5 @@
+watermark:
+  supported_bit_lengths: [8, 16, 32, 64, 128, 256, 512, 1024]
+  hash_algorithm: sha256
+  text_encoding: utf-8
+  expansion: repeated_sha256_counter

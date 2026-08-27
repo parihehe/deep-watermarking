@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DWT-SVD Invisible Watermarking</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b21; --panel-2:#1e242c; --line:#2b323c;
+    --text:#e7ecf2; --muted:#95a1b2; --accent:#5b9dff; --accent-2:#3ad1a4;
+    --warn:#ffb454; --err:#ff6b6b; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text)}
+  header{padding:22px 28px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{margin:0;font-size:18px;font-weight:600;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+  header .pill{float:right;font-size:12px;color:var(--muted);border:1px solid var(--line);
+    padding:4px 10px;border-radius:999px}
+  main{display:grid;grid-template-columns:360px 1fr;gap:22px;padding:22px 28px;max-width:1400px;margin:0 auto}
+  @media (max-width:920px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .card h2{margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+  label:first-of-type{margin-top:0}
+  input[type=text],input[type=number],select,textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:9px 10px;font:inherit}
+  textarea{resize:vertical;min-height:52px}
+  input[type=range]{width:100%}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  .dropzone{border:1.5px dashed var(--line);border-radius:10px;padding:20px;text-align:center;
+    color:var(--muted);cursor:pointer;transition:.15s;background:var(--panel-2)}
+  .dropzone.drag{border-color:var(--accent);color:var(--text)}
+  .dropzone strong{color:var(--text)}
+  button.primary{margin-top:16px;width:100%;background:var(--accent);color:#06101f;border:0;
+    border-radius:9px;padding:11px 14px;font:inherit;font-weight:600;cursor:pointer}
+  button.primary:disabled{opacity:.55;cursor:not-allowed}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .metric{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .metric .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .metric .v{font-size:22px;font-weight:650;margin-top:4px}
+  .metric .u{font-size:12px;color:var(--muted);margin-left:3px}
+  .images{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
+  @media (max-width:920px){.images{grid-template-columns:1fr}.metrics{grid-template-columns:1fr}}
+  figure{margin:0}
+  figure img{width:100%;border-radius:10px;border:1px solid var(--line);background:#000;display:block}
+  figcaption{font-size:12px;color:var(--muted);margin-top:6px;text-align:center}
+  .bits{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;
+    word-break:break-all;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    padding:10px;color:var(--muted);max-height:96px;overflow:auto}
+  .banner{border-radius:9px;padding:11px 13px;font-size:13px;margin-bottom:14px;display:none}
+  .banner.err{display:block;background:rgba(255,107,107,.12);border:1px solid var(--err);color:#ffd0d0}
+  .banner.ok{display:block;background:rgba(58,209,164,.1);border:1px solid var(--accent-2);color:#c6f4e6}
+  .muted{color:var(--muted)} .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #06101f;border-top-color:transparent;
+    border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  details{margin-top:12px}summary{cursor:pointer;color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  td{padding:4px 0;border-bottom:1px solid var(--line)} td:last-child{text-align:right}
+</style>
+</head>
+<body>
+<header>
+  <span class="pill" id="health">checking…</span>
+  <h1>DWT-SVD Invisible &amp; Robust Image Watermarking</h1>
+  <p>Phase 7 demo &middot; drives the frozen Phase 6 baseline: DWT&nbsp;→&nbsp;LL&nbsp;→&nbsp;SVD&nbsp;→&nbsp;multiplicative singular-value modulation&nbsp;→&nbsp;IDWT</p>
+</header>
+
+<main>
+  <form class="card" id="form">
+    <h2>Input</h2>
+
+    <div class="dropzone" id="drop">
+      <strong>Click or drop an image</strong><br />
+      <span id="fname">PNG / JPEG / BMP / TIFF · any size up to 2048&times;2048</span>
+      <input type="file" id="file" accept="image/*" hidden />
+    </div>
+
+    <label>Watermark payload source</label>
+    <select id="payload_source">
+      <option value="random">Random (UUID → SHA-256)</option>
+      <option value="text">Text (UTF-8 → SHA-256)</option>
+      <option value="uuid">Specific UUID</option>
+      <option value="bits">Explicit bit string</option>
+    </select>
+    <div id="payload_text_wrap" hidden><label>Text</label>
+      <textarea id="payload_text" placeholder="e.g. owner:alice; 2026-08-27"></textarea></div>
+    <div id="payload_uuid_wrap" hidden><label>UUID</label>
+      <input type="text" id="payload_uuid" placeholder="00000000-0000-0000-0000-000000000000" /></div>
+    <div id="payload_bits_wrap" hidden><label>Bits (0/1, zero-padded to payload size)</label>
+      <input type="text" id="payload_bits" class="mono" placeholder="10110010…" /></div>
+
+    <div class="row">
+      <div>
+        <label>Payload size (bits)</label>
+        <select id="bit_length"></select>
+      </div>
+      <div>
+        <label>Embedding strength α — <span id="alpha_val" class="mono">0.010</span></label>
+        <input type="range" id="alpha" min="0.001" max="0.1" step="0.001" value="0.010" />
+        <div class="hint">baseline sweep: 0.005 / 0.010 / 0.015</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div><label>Wavelet</label><select id="wavelet"></select></div>
+      <div><label>Subband</label><select id="subband"></select></div>
+    </div>
+    <label>Overflow subbands (optional, comma-separated — used only if the payload exceeds one subband)</label>
+    <input type="text" id="extra_subbands" class="mono" placeholder="HL, LH, HH" />
+
+    <button class="primary" id="go" type="submit" disabled>Embed watermark</button>
+    <div class="hint" id="cap_hint"></div>
+  </form>
+
+  <section class="card" id="results">
+    <h2>Result</h2>
+    <div class="banner" id="banner"></div>
+    <div id="empty" class="muted">Upload an image and run an embed to see the watermarked output and metrics.</div>
+
+    <div id="output" hidden>
+      <div class="metrics">
+        <div class="metric"><div class="k">PSNR</div><div class="v"><span id="m_psnr">–</span><span class="u">dB</span></div></div>
+        <div class="metric"><div class="k">SSIM</div><div class="v" id="m_ssim">–</div></div>
+        <div class="metric"><div class="k">MSE</div><div class="v" id="m_mse">–</div></div>
+      </div>
+
+      <div class="images">
+        <figure><img id="img_original" alt="original" /><figcaption>Original</figcaption></figure>
+        <figure><img id="img_watermarked" alt="watermarked" /><figcaption>Watermarked</figcaption></figure>
+        <figure><img id="img_residual" alt="residual" /><figcaption>Residual (×15)</figcaption></figure>
+      </div>
+
+      <details open>
+        <summary>Watermark recovery — non-blind reference decoder</summary>
+        <table>
+          <tr><td>Bit error rate (BER)</td><td class="mono" id="r_ber">–</td></tr>
+          <tr><td>Bit accuracy</td><td class="mono" id="r_acc">–</td></tr>
+          <tr><td>Normalized correlation (NC)</td><td class="mono" id="r_nc">–</td></tr>
+          <tr><td>Payload source</td><td class="mono" id="r_src">–</td></tr>
+          <tr><td>Effective config</td><td class="mono" id="r_cfg">–</td></tr>
+        </table>
+        <p class="hint">This decoder compares the watermarked image against the original.
+          A blind decoder that needs no original is Phase 8 (CNN).</p>
+      </details>
+
+      <details>
+        <summary>Embedded payload bits</summary>
+        <div class="bits" id="r_bits"></div>
+        <div class="hint">recovered bits</div>
+        <div class="bits" id="r_rbits"></div>
+      </details>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let fileBlob = null, OPTS = null;
+
+async function boot(){
+  try{
+    const h = await (await fetch('/api/health')).json();
+    $('#health').textContent = h.cuda ? 'torch '+h.torch+' · CUDA' : 'torch '+(h.torch||'?')+' · CPU';
+  }catch{ $('#health').textContent = 'offline'; }
+
+  OPTS = await (await fetch('/api/options')).json();
+  fill('#wavelet', OPTS.wavelets, 'haar');
+  fill('#subband', OPTS.subbands, 'LL');
+  fill('#bit_length', OPTS.bit_lengths.map(String), '64');
+  updateCap();
+}
+function fill(sel, values, def){
+  const el = $(sel); el.innerHTML = '';
+  for(const v of values){ const o=document.createElement('option'); o.value=v; o.textContent=v; el.appendChild(o); }
+  if(def!=null) el.value = def;
+}
+
+// ---- file input ----
+const drop = $('#drop');
+drop.addEventListener('click', ()=> $('#file').click());
+$('#file').addEventListener('change', e => setFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag')}));
+drop.addEventListener('drop', e => setFile(e.dataTransfer.files[0]));
+function setFile(f){
+  if(!f || !f.type.startsWith('image/')) return;
+  fileBlob = f;
+  $('#fname').textContent = f.name + '  ·  ' + Math.round(f.size/1024) + ' KB';
+  $('#go').disabled = false;
+}
+
+// ---- payload source toggles ----
+$('#payload_source').addEventListener('change', e=>{
+  const v = e.target.value;
+  $('#payload_text_wrap').hidden = v!=='text';
+  $('#payload_uuid_wrap').hidden = v!=='uuid';
+  $('#payload_bits_wrap').hidden = v!=='bits';
+});
+$('#alpha').addEventListener('input', e=> $('#alpha_val').textContent = Number(e.target.value).toFixed(3));
+['#bit_length','#subband','#extra_subbands'].forEach(s=> $(s).addEventListener('change', updateCap));
+function updateCap(){
+  const n = Number($('#bit_length').value);
+  $('#cap_hint').textContent =
+    'A 256×256 image gives 128 singular values per subband. Payloads over one subband need overflow subbands.'
+    + (n>128 ? '  ⚠ '+n+' bits needs at least '+Math.ceil(n/128)+' subbands.' : '');
+}
+
+// ---- submit ----
+$('#form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!fileBlob) return;
+  const btn = $('#go'); btn.disabled = true;
+  const label = btn.textContent; btn.innerHTML = '<span class="spin"></span>Embedding…';
+  banner('', '');
+
+  const fd = new FormData();
+  fd.append('image', fileBlob);
+  fd.append('alpha', $('#alpha').value);
+  fd.append('bit_length', $('#bit_length').value);
+  fd.append('wavelet', $('#wavelet').value);
+  fd.append('subband', $('#subband').value);
+  fd.append('extra_subbands', $('#extra_subbands').value);
+  fd.append('payload_source', $('#payload_source').value);
+  fd.append('payload_text', $('#payload_text').value);
+  fd.append('payload_uuid', $('#payload_uuid').value);
+  fd.append('payload_bits', $('#payload_bits').value);
+
+  try{
+    const res = await fetch('/api/watermark/embed', {method:'POST', body:fd});
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.detail || ('HTTP '+res.status));
+    render(data);
+    banner('ok', 'Done — PSNR '+fmt(data.quality_metrics.psnr_db)+' dB, BER '+fmt(data.recovery_metrics.ber));
+  }catch(err){
+    banner('err', err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+  }
+});
+
+function banner(kind, msg){
+  const b = $('#banner');
+  b.className = 'banner' + (kind ? ' '+kind : '');
+  b.textContent = msg;
+}
+const fmt = v => v==null ? '∞' : (typeof v==='number' ? v.toString() : v);
+
+function render(d){
+  $('#empty').hidden = true; $('#output').hidden = false;
+  $('#m_psnr').textContent = d.quality_metrics.psnr_db==null ? '∞' : d.quality_metrics.psnr_db.toFixed(2);
+  $('#m_ssim').textContent = d.quality_metrics.ssim.toFixed(4);
+  $('#m_mse').textContent  = d.quality_metrics.mse.toFixed(3);
+  $('#img_original').src    = d.images.original;
+  $('#img_watermarked').src = d.images.watermarked;
+  $('#img_residual').src    = d.images.residual_x15;
+  $('#r_ber').textContent = d.recovery_metrics.ber;
+  $('#r_acc').textContent = d.recovery_metrics.bit_accuracy;
+  $('#r_nc').textContent  = d.recovery_metrics.nc;
+  $('#r_src').textContent = d.payload.description;
+  const c = d.config;
+  $('#r_cfg').textContent = `α=${c.alpha}, ${c.bit_length} bit, ${c.wavelet}, ${c.subband_order.join('+')}`;
+  $('#r_bits').textContent  = d.payload.bit_string;
+  $('#r_rbits').textContent = d.recovery_metrics.recovered_bit_string;
+}
+
+boot();
+</script>
+</body>
+</html>

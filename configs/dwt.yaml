@@ -1,0 +1,6 @@
+dwt:
+  level: 1
+  boundary_mode: symmetric
+  baseline_wavelet: haar
+  evaluation_wavelets: [haar, db2, db4]
+  reconstruction_tolerance: 1.0e-10
