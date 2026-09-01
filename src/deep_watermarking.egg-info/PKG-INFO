@@ -19,10 +19,15 @@ Requires-Dist: torchvision>=0.19; extra == "training"
 Provides-Extra: tracking
 Requires-Dist: mlflow<4,>=2.15; extra == "tracking"
 Requires-Dist: dvc<4,>=3.50; extra == "tracking"
+Provides-Extra: api
+Requires-Dist: fastapi>=0.110; extra == "api"
+Requires-Dist: uvicorn>=0.27; extra == "api"
+Requires-Dist: python-multipart>=0.0.9; extra == "api"
 Provides-Extra: dev
 Requires-Dist: pytest<9,>=8.3; extra == "dev"
 Requires-Dist: pytest-cov<7,>=5; extra == "dev"
 Requires-Dist: ruff<1,>=0.6; extra == "dev"
+Requires-Dist: httpx2; extra == "dev"
 
 # Deep Watermarking
 

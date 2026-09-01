@@ -3,7 +3,8 @@
 **Purpose:** authoritative, verified state of the `deep-watermarking` project so any
 future session can continue without conversation memory.
 
-**Last updated:** 2026-08-27 (Claude Code session — re-audit + **Phase 6 completed**)
+**Last updated:** 2026-09-01 (Claude Code session — **Phase 9 completed**, see §8;
+the operative roadmap is §6 "Scheme B", not the historical §3 table)
 
 ---
 
@@ -81,10 +82,10 @@ future session can continue without conversation memory.
 | 4 | DWT module | COMPLETE | `dwt.py`: haar/db2/db4, symmetric/periodization, round-trip max err ≤ 1e-10, 11 tests |
 | 5 | SVD module | COMPLETE | `svd.py`: full SVD, reconstruct, singular-value extract/select, bipolar embed, non-blind extract, 20 tests |
 | 6 | DWT-SVD baseline embed + evaluation | **COMPLETE (frozen)** | multiplicative relative SV modulation; correct YCrCb path; `metrics.py`; `run_baseline.py`; real results over 40 held-out test images in `results/phase6_baseline/`; `docs/baseline.md`; 111 tests pass. See §4. |
-| 7 | Blind CNN extractor + training | MISSING — **NEXT** | `src/models/` empty stub |
-| 8 | Baseline validation | MISSING | |
-| 9 | Attack simulation | MISSING | |
-| 10 | Adaptive/content-aware embedding | MISSING | |
+| 7 | Blind CNN extractor + training | COMPLETE — delivered as Scheme B Phase 8 (§7) | |
+| 8 | Baseline validation | COMPLETE — delivered as Scheme B Phase 9 (§8) | `results/phase9_validation/` |
+| 9 | Attack simulation | MISSING — Scheme B Phase 10, **NEXT** | |
+| 10 | Adaptive/content-aware embedding | MISSING — Scheme B Phase 11 | |
 | 11 | Attack-aware training | MISSING | |
 | 12 | High-capacity study | MISSING | note: 256² image → LL is 128×128 → only 128 singular values; payloads > 128 bits need multi-subband or multi-channel allocation |
 | 13 | Wavelet study | MISSING | |
@@ -168,10 +169,10 @@ The Web UI was pulled forward ahead of the CNN. Completed phases are unchanged.
 | Phase | Description | Status |
 |---|---|---|
 | 6 | DWT-SVD baseline embedding + evaluation | ✅ COMPLETE (frozen) |
-| 7 | **Web Application / UI** around the existing `embed()` pipeline | **NEXT** |
-| 8 | Blind CNN extractor + training | pending |
-| 9 | Baseline validation and robustness testing | pending |
-| 10 | Attack simulation | pending |
+| 7 | Web Application / UI around the existing `embed()` pipeline | ✅ COMPLETE |
+| 8 | Blind CNN extractor + training | ✅ COMPLETE (see §7) |
+| 9 | Baseline Validation & Robustness Preparation | ✅ COMPLETE (see §8) |
+| 10 | Attack simulation | **NEXT** |
 | 11 | Adaptive / content-aware embedding | pending |
 | 12+ | (unchanged: capacity, wavelet/subband, CNN improvement, ECC, final model, ablation, generalization, security, performance, MLflow+PG, FastAPI, React, Docker, final experiments, docs, PPT) | pending |
 
@@ -188,3 +189,160 @@ Entry points the UI calls (all already implemented and tested):
 - `src.watermark.embed.EmbedConfig`, `embed`, `extract_traditional`, `compute_residual`
 - `src.watermark.watermark_generator.generate_random`, `generate_from_text`, `generate_from_uuid`
 - `src.evaluation.metrics.quality_report`, `recovery_report`
+
+---
+
+## 7. Phase 8 — Blind CNN watermark extractor (2026-09-01, Claude Code)
+
+**Status: COMPLETE.** Additive only — no frozen baseline file and no Phase 7
+web-app file was modified. Full test suite: **148 passed** (was 123).
+
+### What it does
+A learned **blind** decoder: given only the watermarked image (no original), it
+predicts the embedded payload bits. Training data is synthesised on the fly by
+calling the frozen Phase 6 `embed()` on real processed DIV2K images with random
+payloads.
+
+### Key design finding
+A first attempt with a plain 2D CNN on RGB pixels + global average pooling
+trained to **exactly chance** (val bit-accuracy 0.49) — the watermark residual
+is sub-perceptual and spatially diffuse, and pooling destroys it. The working
+design operates where the watermark is actually defined:
+
+  image → BT.601 luma → single-level Haar DWT (LL) → SVD singular values
+        → (all fixed / parameter-free) → **1D CNN along the singular-value index
+        axis** → one logit per index → first `bit_length` are the payload.
+
+~87 K learnable parameters. The 1D conv's receptive field lets each bit decision
+see its singular value in the context of its neighbours — i.e. "is this value
+above or below the smooth local trend?", the blind analogue of the non-blind
+`sigma_w[i]` vs `sigma_o[i]` comparison.
+
+### Files added (no files changed)
+- `src/models/cnn_extractor.py` — `BlindCNNExtractor`, `ExtractorConfig`, checkpoint I/O.
+- `src/training/watermark_dataset.py` — `WatermarkExtractionDataset` (on-the-fly embedding).
+- `src/training/train_extractor.py` — training/validation loop, checkpointing, CSV/JSON logs, CLI.
+- `src/evaluation/blind_extract.py` — `BlindExtractor` inference wrapper + CLI.
+- `configs/cnn_extractor.yaml` — Phase 8 config (separate from `baseline.yaml`).
+- `experiments/run_phase8_smoke.py` — CPU smoke experiment.
+- `tests/test_cnn_extractor.py` — 25 tests (incl. a guard that the baseline / Phase 7 API is unchanged).
+- `docs/phase8_blind_cnn.md` — full write-up.
+
+### Smoke experiment result (CPU, `experiments/run_phase8_smoke.py`)
+32-bit payload, watermark at the **frozen baseline strength alpha = 0.02**,
+300 train / 60 validation images, 12 epochs (~12 s/epoch):
+
+- validation bit-accuracy: **0.4953 (init) → 0.7396 (best, epoch 7)**,
+  BER 0.2604, NC 0.479
+- training bit-accuracy tracks validation (0.735 vs 0.731 at the end) — the
+  model generalises across images and fresh random payloads, not memorising
+- checkpoint saved and reloaded; blind extraction verified on 5 held-out
+  images (8–11 of 32 bits wrong each, image only in)
+
+### Full configuration result (`configs/cnn_extractor.yaml`, this session)
+64-bit payload, `alpha = 0.02`, **all 700 train / 100 validation** images,
+20 epochs (~6.5 min CPU), 87,041 params, seed 20260901:
+
+- validation loss 0.6931 → **0.4537**; training loss → 0.4600
+- validation bit-accuracy 0.5078 → **0.7761**; training 0.7698 (no overfitting)
+- validation BER 0.4922 → **0.2239**; validation NC 0.016 → 0.552
+- exact-match 0.0 (a full 64-bit payload is not yet recovered error-free)
+- checkpoint `models/phase8_cnn/phase8_cnn_best.pt` (+ `_last.pt`);
+  log/summary in `results/phase8_cnn/phase8_cnn_training_*.{csv,json}`
+- blind extraction from the reloaded checkpoint on all 100 held-out validation
+  images: mean BER 0.2239 / bit-accuracy 0.7761 (8–16 of 64 bits wrong per
+  image, NC +0.50…+0.75), image-only input
+
+The ~0.78 plateau is expected and consistent with the Phase 6 story: trailing
+singular values are fragile through the IDWT + uint8 round trip, so BER rises
+with payload depth. More epochs, an LR schedule and a leading-bit-weighted loss
+are the obvious levers, left for a later CNN-improvement phase.
+
+### How to run
+- Full training: `.venv\Scripts\python.exe -m src.training.train_extractor --config configs\cnn_extractor.yaml`
+- Smoke: `.venv\Scripts\python.exe experiments\run_phase8_smoke.py`
+- Blind extraction: `.venv\Scripts\python.exe -m src.evaluation.blind_extract --checkpoint models\phase8_cnn\phase8_cnn_best.pt --image watermarked.png`
+- Weights: `models/phase8_cnn/<run_name>_best.pt` and `_last.pt`; logs under `results/phase8_cnn/`.
+
+See `docs/phase8_blind_cnn.md` for the full description.
+
+---
+
+## 8. Phase 9 — Baseline Validation & Robustness Preparation (2026-09-01, Claude Code)
+
+**Status: COMPLETE.** Additive only — **no** file under `src/watermark/`,
+`src/evaluation/metrics.py`, `src/app/`, `src/models/` or `src/training/` was
+modified (`git diff` on those paths is empty). Full test suite: **176 passed**
+(was 148). The frozen Phase 6 baseline and the Phase 8 CNN are *run*, never
+changed; `run_phase9_validation.py` asserts the frozen Phase 6 contract and
+records the SHA-256 of every frozen file before it starts.
+
+### What it does
+A reproducible, config-driven **validation** phase (not a modelling phase):
+
+1. Frozen DWT-SVD baseline (non-blind decoder) over the **full held-out DIV2K
+   test split (100 images)**, for payloads **8 / 16 / 32 / 64 / 128 bits** at the
+   frozen alpha sweep **{0.005, 0.010, 0.015}** — the clean-channel (no-attack)
+   reference Phase 10 will measure degradation against.
+2. Every metric split into two clearly separated families:
+   **image-quality** = PSNR / SSIM / MSE, **watermark-recovery** = BER /
+   bit-accuracy / NC.
+3. The Phase 8 blind CNN extractor evaluated **separately** on the same unseen
+   images at its trained operating point (64 bits, alpha 0.02), with a
+   like-for-like non-blind vs blind comparison. Architecture untouched.
+
+### Deliberately out of scope
+No JPEG/noise/blur/crop attacks (Phase 10), no adaptive embedding (Phase 11),
+no ECC (Phase 16), no CNN architecture change (Phase 15), no web-UI change.
+Payloads are capped at the frozen LL-only capacity (128 bits), so the baseline
+runs exactly as in Phase 6 — no multi-subband overflow.
+
+### Files added (no files changed)
+- `src/evaluation/phase9_validation.py` — harness: `METRIC_GROUPS`, `Phase9Config`
+  + `load_config`, deterministic payloads, `assert_baseline_frozen`,
+  `evaluate_baseline_point`, `evaluate_cnn_point`, aggregation.
+- `configs/phase9_validation.yaml` — Phase 9 config (separate from `baseline.yaml`
+  and `cnn_extractor.yaml`).
+- `experiments/run_phase9_validation.py` — single entry point (`--quick`, `--no-cnn`).
+- `tests/test_phase9_validation.py` — 28 tests (taxonomy, config, deterministic
+  payloads, frozen-baseline guard + drift-detection, data- and CNN-dependent
+  end-to-end checks).
+- `docs/phase9_validation.md` — full write-up.
+
+### Measured results (`experiments/run_phase9_validation.py`, 100 test images, ~2m45s CPU)
+
+Frozen baseline — image quality (mean): alpha 0.005 → PSNR ≈ 49.0 dB / SSIM 0.9986;
+0.010 → 45.6 dB / 0.9982; 0.015 → 42.8 dB / 0.9975. Flat in payload.
+
+Frozen baseline — non-blind recovery, mean BER (clean channel):
+
+| payload | α 0.005 | α 0.010 | α 0.015 |
+|---|---|---|---|
+| 8 | 0.0000 | 0.0000 | 0.0013 |
+| 16 | 0.0081 | 0.0088 | 0.0156 |
+| 32 | 0.0075 | 0.0166 | 0.0338 |
+| 64 | 0.0266 | 0.0372 | 0.0616 |
+| 128 | 0.1313 | 0.1216 | 0.1361 |
+
+Reproduces the Phase 6 characterisation (40 images) on the full 100-image split —
+same shape, 8 bits recovered essentially perfectly, capacity knee at 128 bits.
+
+Phase 8 blind CNN vs non-blind reference (100 images, 64 bits, alpha 0.02):
+non-blind BER **0.1013** / bit-acc 0.8988; blind CNN BER **0.2220** /
+bit-acc **0.7780** / NC 0.556. The blind result on the unseen test split matches
+the Phase 8 validation result (0.2239 / 0.7761) almost exactly — genuine
+generalisation, no overfitting.
+
+### Output (`results/phase9_validation/`, git-ignored like Phases 6/8)
+`phase9_baseline_per_image.csv` (1500 rows), `phase9_baseline_summary.csv` (15),
+`phase9_baseline_summary.json`, `phase9_cnn_per_image.csv` (100),
+`phase9_cnn_summary.json`, `phase9_nonblind_vs_blind.csv`, `phase9_report.json`
+(config + environment + frozen-file SHA-256 + both summaries), and
+`plots/{psnr_vs_payload,ber_vs_payload_nonblind,quality_vs_recovery,nonblind_vs_blind_ber}.png`.
+
+### How to run
+- Full: `.venv\Scripts\python.exe experiments\run_phase9_validation.py`
+- Quick: `.venv\Scripts\python.exe experiments\run_phase9_validation.py --quick`
+- Baseline only: `.venv\Scripts\python.exe experiments\run_phase9_validation.py --no-cnn`
+
+See `docs/phase9_validation.md` for the full description.

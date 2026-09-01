@@ -1,0 +1,57 @@
+# Phase 8 — Blind CNN watermark extractor.
+#
+# This config is SEPARATE from configs/baseline.yaml. The frozen Phase 6 baseline
+# (its wavelet / subband / alpha sweep) is unchanged. The values under `embed`
+# below only control how training data is SYNTHESISED for the learned decoder:
+# the frozen `embed()` function is called with these parameters to watermark
+# real DIV2K images on the fly.
+cnn_extractor:
+
+  # Parameters passed to the frozen Phase 6 DWT-SVD embedder to create
+  # (watermarked image, payload) training pairs.
+  embed:
+    wavelet: haar
+    mode: symmetric
+    subband: LL
+    extra_subbands: []          # LL alone holds 128 bits for a 256x256 image
+    start_sv_index: 0
+    # The blind decoder is trained at alpha=0.02. This is slightly above the
+    # frozen baseline's 0.005-0.015 study range so the learned model has a
+    # stronger (still ~40 dB PSNR) signal to read; it does not change the
+    # baseline. Lower it here to study the accuracy/imperceptibility trade-off.
+    alpha: 0.02
+
+  payload:
+    bit_length: 64             # must be <= 128 for the LL-only default
+
+  data:
+    processed_root: data/processed/div2k_256
+    train_split: train
+    validation_split: validation
+    train_limit: null          # null => all 700 training images
+    val_limit: null            # null => all 100 validation images
+    image_size: 256
+
+  model:
+    # The extractor turns the image into the DWT-LL singular-value spectrum
+    # (a fixed, parameter-free step) and learns a 1D CNN over that spectrum.
+    sv_features: 128             # leading singular values fed to the 1D CNN
+    conv_channels: 64
+    conv_layers: 4
+    kernel_size: 7               # neighbouring singular values each bit can see
+    dropout: 0.1
+
+  train:
+    epochs: 20
+    batch_size: 16
+    lr: 0.001
+    weight_decay: 0.0001
+    grad_clip: 1.0
+    num_workers: 0             # on-the-fly embedding runs in the main process
+    device: auto               # "auto" -> cuda if available else cpu
+    seed: 20260901
+
+  output:
+    checkpoint_dir: models/phase8_cnn
+    results_dir: results/phase8_cnn
+    run_name: phase8_cnn
