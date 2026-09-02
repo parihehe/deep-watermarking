@@ -3,7 +3,7 @@
 **Purpose:** authoritative, verified state of the `deep-watermarking` project so any
 future session can continue without conversation memory.
 
-**Last updated:** 2026-09-01 (Claude Code session — **Phase 9 completed**, see §8;
+**Last updated:** 2026-09-01 (Claude Code session — **Phase 10 completed**, see §9;
 the operative roadmap is §6 "Scheme B", not the historical §3 table)
 
 ---
@@ -84,8 +84,8 @@ the operative roadmap is §6 "Scheme B", not the historical §3 table)
 | 6 | DWT-SVD baseline embed + evaluation | **COMPLETE (frozen)** | multiplicative relative SV modulation; correct YCrCb path; `metrics.py`; `run_baseline.py`; real results over 40 held-out test images in `results/phase6_baseline/`; `docs/baseline.md`; 111 tests pass. See §4. |
 | 7 | Blind CNN extractor + training | COMPLETE — delivered as Scheme B Phase 8 (§7) | |
 | 8 | Baseline validation | COMPLETE — delivered as Scheme B Phase 9 (§8) | `results/phase9_validation/` |
-| 9 | Attack simulation | MISSING — Scheme B Phase 10, **NEXT** | |
-| 10 | Adaptive/content-aware embedding | MISSING — Scheme B Phase 11 | |
+| 9 | Attack simulation | COMPLETE — delivered as Scheme B Phase 10 (§9) | `results/phase10_robustness/` |
+| 10 | Adaptive/content-aware embedding | MISSING — Scheme B Phase 11, **NEXT** | |
 | 11 | Attack-aware training | MISSING | |
 | 12 | High-capacity study | MISSING | note: 256² image → LL is 128×128 → only 128 singular values; payloads > 128 bits need multi-subband or multi-channel allocation |
 | 13 | Wavelet study | MISSING | |
@@ -172,8 +172,8 @@ The Web UI was pulled forward ahead of the CNN. Completed phases are unchanged.
 | 7 | Web Application / UI around the existing `embed()` pipeline | ✅ COMPLETE |
 | 8 | Blind CNN extractor + training | ✅ COMPLETE (see §7) |
 | 9 | Baseline Validation & Robustness Preparation | ✅ COMPLETE (see §8) |
-| 10 | Attack simulation | **NEXT** |
-| 11 | Adaptive / content-aware embedding | pending |
+| 10 | Attack Simulation / Robustness Testing | ✅ COMPLETE (see §9) |
+| 11 | Adaptive / content-aware embedding | **NEXT** |
 | 12+ | (unchanged: capacity, wavelet/subband, CNN improvement, ECC, final model, ablation, generalization, security, performance, MLflow+PG, FastAPI, React, Docker, final experiments, docs, PPT) | pending |
 
 ### Phase 7 scope (this reorg)
@@ -346,3 +346,79 @@ generalisation, no overfitting.
 - Baseline only: `.venv\Scripts\python.exe experiments\run_phase9_validation.py --no-cnn`
 
 See `docs/phase9_validation.md` for the full description.
+
+---
+
+## 9. Phase 10 — Attack Simulation / Robustness Testing (2026-09-01, Claude Code)
+
+**Status: COMPLETE.** Additive only — `git diff` on `src/watermark/`,
+`src/evaluation/metrics.py`, `src/evaluation/blind_extract.py`,
+`src/evaluation/phase9_validation.py`, `src/models/`, `src/training/`,
+`src/app/` and every earlier config is **empty**. Full test suite:
+**242 passed** (was 176). The runner asserts the frozen Phase 6 contract,
+records frozen-file SHA-256, and ends with a sanity block confirming the
+Phase 7 route and the Phase 8 checkpoint still load and run
+(`{'phase7_app_route_present': True, 'phase6_defaults_intact': True,
+'phase8_cnn_loads_and_runs': True}`).
+
+### What it does
+Watermarks each held-out DIV2K **test** image once at the Phase 8/9 operating
+point (**64 bits, alpha 0.02**; frozen formula, only `alpha`/`bit_length` set),
+applies each attack at several severities, recovers with **both** the frozen
+non-blind `extract_traditional` and the Phase 8 blind CNN, and records the
+image-quality group (PSNR/SSIM/MSE) and watermark-recovery group
+(BER/bit-acc/NC) for each, plus the delta vs the no-attack baseline. Only
+preprocessing before extraction is a resize back to 256×256; no attack is
+inverted (raw damage is the point).
+
+### Attacks & parameters (`configs/phase10_robustness.yaml`)
+`jpeg_compress` q∈{90,75,50,30,10}; `gaussian_noise` σ∈{2,5,10,20,40};
+`gaussian_blur` k∈{3,5,7,9}; `median_filter` k∈{3,5,7};
+`resize_roundtrip` scale∈{0.9,0.75,0.5,0.25}; `rotate` deg∈{1,2,5,10,45};
+`center_crop` keep∈{0.95,0.9,0.75,0.5}; `combined` 3 pipelines; `identity`.
+Run: 50 test images, 34 points, 1700 per-image rows/decoder, ~3 min CPU.
+
+### Files added (no files changed)
+- `src/evaluation/attacks.py` — 9 pure attack primitives + registry (imports nothing from the watermarking pipeline).
+- `src/evaluation/phase10_robustness.py` — harness (`Phase10Config`/`load_config`, `build_embed_config`, `prepare_samples`, `resynchronise`, `evaluate_attack_point`, `summarise`); reuses Phase 9 helpers.
+- `configs/phase10_robustness.yaml` — attack grid + operating point.
+- `experiments/run_phase10_robustness.py` — entry point (`--quick`, `--no-cnn`, `--eval-num-images`).
+- `tests/test_attacks.py` (42) + `tests/test_phase10_robustness.py` (24).
+- `docs/phase10_robustness.md` — full write-up.
+
+### Key results (50 images)
+No-attack baseline: non-blind BER **0.096**, blind BER **0.222** (matches Phase 9).
+
+| attack (worst severity) | non-blind BER | blind BER |
+|---|---|---|
+| jpeg_compress (q10) | 0.366 | 0.437 |
+| gaussian_noise (σ40) | 0.469 | 0.457 |
+| median_filter (k7) | 0.481 | 0.478 |
+| gaussian_blur (k9) | 0.489 | 0.471 |
+| resize_roundtrip (0.25) | 0.490 | 0.504 |
+| rotate (45°) | 0.495 | 0.513 |
+| center_crop (0.5) | 0.499 | 0.502 |
+
+- **The watermark only meaningfully survives JPEG and light Gaussian noise**
+  (non-blind BER < 0.23 down to JPEG q50 / noise σ5; `combined ①` JPEG75+σ3 at
+  0.18). Everything else — blur k3, resize 0.9, 1° rotation, 5 % crop — drives
+  the non-blind decoder to chance (~0.47–0.50) even at the mildest setting,
+  because it is a bare magnitude comparison with no amplitude normalisation.
+- **The blind CNN is measurably more robust to blur and resize** (resize 0.9:
+  0.389 vs 0.466; blur k3: 0.412 vs 0.472) but not to rotation/crop.
+- **Most damaging → least:** center_crop ≈ rotate ≈ resize ≈ blur ≈ median ≈
+  heavy combined (all ≈ chance) > gaussian_noise > jpeg.
+- Payload-level robustness (exact match) is 0 under every attack — motivates
+  ECC (Phase 16) and attack-aware training / synchronisation (later phases).
+
+### Output (`results/phase10_robustness/`, git-ignored)
+`phase10_per_image.csv` (1700), `phase10_summary.csv` (34, with
+`*_delta_vs_baseline`), `phase10_baseline.json`, `phase10_report.json`
+(config + environment + frozen-file SHA-256 + ranking + two-group summary +
+sanity block), `plots/{ber_vs_severity,psnr_vs_severity,worst_case_ber_by_attack}.png`.
+
+### How to run
+- Full: `.venv\Scripts\python.exe experiments\run_phase10_robustness.py`
+- Quick: `... --quick`  ·  Non-blind only: `... --no-cnn`  ·  Full split: `... --eval-num-images 100`
+
+See `docs/phase10_robustness.md` for the full description.

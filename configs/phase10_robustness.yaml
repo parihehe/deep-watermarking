@@ -1,0 +1,108 @@
+# Phase 10 - Attack Simulation / Robustness Testing.
+#
+# SEPARATE from configs/baseline.yaml, configs/cnn_extractor.yaml and
+# configs/phase9_validation.yaml. Phase 10 does not change the frozen Phase 6
+# baseline, the Phase 7 UI or the Phase 8 CNN architecture. It only *runs* the
+# frozen embed() / extract_traditional() and the trained blind extractor, then
+# attacks the watermarked images and measures recovery.
+#
+# Scope guard (deliberately NOT in Phase 10):
+#   * no change to the frozen Phase 6 formula / defaults
+#   * no CNN architecture change ............ Phase 15
+#   * no adaptive embedding ................. Phase 11
+#   * no high-capacity changes .............. Phase 12
+#   * no wavelet / subband study ........... Phases 13-14
+#   * no error-correcting codes ............ Phase 16
+#   * no geometric re-synchronisation of attacked images (raw damage is the point)
+phase10:
+
+  # ---- embedding operating point ----
+  # The frozen Phase 6 formula and all its structural defaults are used
+  # unchanged; only `alpha` and `bit_length` are set, exactly as Phases 8 and 9
+  # already do, so the non-blind and blind decoders run on identical images at
+  # the Phase 8 checkpoint's operating point.
+  embed:
+    wavelet: haar
+    mode: symmetric
+    subband: LL
+    start_sv_index: 0
+    alpha: 0.02
+    bit_length: 64
+
+  # ---- evaluation data ----
+  data:
+    processed_root: data/processed/div2k_256
+    eval_split: test          # held-out DIV2K IDs 0801-0900
+    eval_num_images: 50       # cap; raise to 100 for the full split (~2x runtime)
+    image_size: 256
+
+  # ---- deterministic payloads / noise ----
+  # Payload for image i = first `bit_length` bits of
+  # numpy.random.default_rng(payload_seed + i); identical on every run.
+  payload_seed: 20260901
+  # Gaussian-noise attacks are seeded from noise_seed + image_index.
+  noise_seed: 1234
+
+  # ---- attacks: name -> list of parameter sets (severities) ----
+  # Every value here is a knob. Lower JPEG quality / resize scale / crop keep
+  # fraction = stronger attack; higher noise sigma / blur ksize / rotation
+  # degrees = stronger attack.
+  attacks:
+    jpeg_compress:
+      - {quality: 90}
+      - {quality: 75}
+      - {quality: 50}
+      - {quality: 30}
+      - {quality: 10}
+    gaussian_noise:
+      - {sigma: 2}
+      - {sigma: 5}
+      - {sigma: 10}
+      - {sigma: 20}
+      - {sigma: 40}
+    gaussian_blur:
+      - {ksize: 3}
+      - {ksize: 5}
+      - {ksize: 7}
+      - {ksize: 9}
+    median_filter:
+      - {ksize: 3}
+      - {ksize: 5}
+      - {ksize: 7}
+    resize_roundtrip:
+      - {scale: 0.9}
+      - {scale: 0.75}
+      - {scale: 0.5}
+      - {scale: 0.25}
+    rotate:
+      - {degrees: 1}
+      - {degrees: 2}
+      - {degrees: 5}
+      - {degrees: 10}
+      - {degrees: 45}
+    center_crop:
+      - {keep: 0.95}
+      - {keep: 0.9}
+      - {keep: 0.75}
+      - {keep: 0.5}
+    combined:
+      - steps:
+          - {name: jpeg_compress, params: {quality: 75}}
+          - {name: gaussian_noise, params: {sigma: 3}}
+      - steps:
+          - {name: gaussian_blur, params: {ksize: 3}}
+          - {name: jpeg_compress, params: {quality: 50}}
+          - {name: gaussian_noise, params: {sigma: 5}}
+      - steps:
+          - {name: resize_roundtrip, params: {scale: 0.75}}
+          - {name: jpeg_compress, params: {quality: 40}}
+
+  # ---- Phase 8 blind CNN extractor (evaluated alongside; architecture frozen) ----
+  cnn:
+    enabled: true
+    checkpoint: models/phase8_cnn/phase8_cnn_best.pt
+
+  # ---- output ----
+  output:
+    results_dir: results/phase10_robustness
+    make_plots: true
