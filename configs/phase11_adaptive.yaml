@@ -1,0 +1,69 @@
+# Phase 11 - Adaptive, Content-Aware Embedding.
+#
+# SEPARATE from configs/baseline.yaml, configs/cnn_extractor.yaml,
+# configs/phase9_validation.yaml and configs/phase10_robustness.yaml. Phase 11
+# does not change the frozen Phase 6 baseline, the Phase 7 UI or the Phase 8
+# CNN. It adds a new block-SVD embedding path (src/watermark/adaptive_embed.py)
+# used only by this phase, and compares a "fixed" (uniform alpha) mode against
+# an "adaptive" (content-aware alpha) mode within that same new path so the
+# comparison isolates exactly the one variable under test.
+#
+# Scope guard (deliberately NOT in Phase 11):
+#   * no change to the frozen Phase 6 formula / defaults
+#   * no CNN architecture change / retraining ......... Phase 15
+#   * no high-capacity changes ......................... Phase 12
+#   * no wavelet / subband study ...................... Phases 13-14
+#   * no error-correcting codes ....................... Phase 16
+#   * no blockchain
+phase11:
+
+  # ---- block-SVD embedding operating point ----
+  embed:
+    wavelet: haar
+    mode: symmetric
+    block_size: 16       # 128x128 LL / 16 = 8x8 = 64 blocks = 64 bits
+    bit_length: 64
+    # Clean-channel alpha sweep (mean strength; identical for fixed & adaptive
+    # at each point). Includes the frozen baseline's own sweep values plus the
+    # Phase 8/9/10 operating point (0.020) for continuity.
+    alphas: [0.005, 0.010, 0.015, 0.020]
+
+  # ---- adaptive alpha-map shape ----
+  adaptive:
+    # Per-block alpha = image_mean_alpha * weight / mean(weight), where weight
+    # linearly interpolates between alpha_low_mult (least-textured block in the
+    # image) and alpha_high_mult (most-textured block), so mean(alpha) over the
+    # image's blocks equals the configured alpha exactly - a fair, equal energy
+    # budget vs the fixed mode.
+    alpha_low_mult: 0.4
+    alpha_high_mult: 1.6
+    # Percentile clip on the raw per-block Sobel edge-energy score before
+    # normalising, so a few outlier blocks (e.g. one very sharp edge) do not
+    # compress every other block's weight toward one end.
+    texture_percentile_clip: [5.0, 95.0]
+
+  # ---- evaluation data ----
+  data:
+    processed_root: data/processed/div2k_256
+    eval_split: test          # held-out DIV2K IDs 0801-0900
+    eval_num_images: 50       # cap; raise to 100 for the full split
+    image_size: 256
+
+  # ---- deterministic payloads / noise ----
+  payload_seed: 20260901
+  noise_seed: 1234
+
+  # ---- robustness stress check (reuses the already-implemented Phase 10
+  # attack primitives; this is not a new attack study, just a sanity check on
+  # whether content-aware allocation helps or hurts after a real channel) ----
+  robustness:
+    alpha: 0.020
+    attacks:
+      jpeg_compress: {quality: 75}
+      gaussian_noise: {sigma: 5}
+      gaussian_blur: {ksize: 3}
+
+  # ---- output ----
+  output:
+    results_dir: results/phase11_adaptive
+    make_plots: true
