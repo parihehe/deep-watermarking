@@ -1,0 +1,107 @@
+# Phase 12 - High-Capacity Watermarking.
+#
+# SEPARATE from every earlier config. Phase 12 does not change the frozen
+# Phase 6 baseline, the Phase 7 UI or the Phase 8 CNN. It adds a new
+# multi-level, multi-subband embedding path
+# (src/watermark/capacity_embed.py) used only by this phase.
+#
+# Capacity arithmetic (256x256 processed images, one bit per leading singular
+# value per subband):
+#   single-level DWT: 4 subbands x 128 singular values = 512 bits max.
+#   2-level DWT (LL decomposed again): 3x128 (level-1 details) + 4x64
+#     (level-2, all bands) = 640 bits max.
+#   3-level DWT: 3x128 + 3x64 + 4x32 = 704 bits max.
+#   L -> infinity: converges to 3*256 = 768 bits (hard ceiling, independent
+#     of how many DWT levels are used - see capacity_embed.py docstring).
+# 1024 bits is therefore UNREACHABLE with this architecture on a 256x256
+# image at any DWT level. The experiments below attempt it anyway at 1, 2
+# and 3 levels to demonstrate the failure explicitly rather than assume it.
+#
+# Scope guard (deliberately NOT in Phase 12):
+#   * no change to the frozen Phase 6 formula / defaults
+#   * no CNN work (Phase 8 architecture untouched, non-blind extraction only)
+#   * no error-correcting codes, no blockchain, no MLflow/PostgreSQL, no
+#     production backend
+phase12:
+
+  # ---- evaluation data ----
+  data:
+    processed_root: data/processed/div2k_256
+    eval_split: test          # held-out DIV2K IDs 0801-0900
+    eval_num_images: 30       # cap; raise for a larger run (5 embedding configs run per image)
+    image_size: 256
+
+  # ---- deterministic payloads ----
+  # Payload for image i, experiment bit_length N = generate_from_uuid(
+  #   uuid.uuid5(NAMESPACE_OID, f"phase12:{payload_seed}:{i}"), N)
+  # - reuses the frozen Phase 3 generator directly. N must be one of
+  # watermark_generator.SUPPORTED_BIT_LENGTHS (128/256/512/1024 here).
+  payload_seed: 20260901
+
+  # ---- experiments: payload size x DWT levels x subband allocation ----
+  # subband_plan entries are [level, band]; level is 1-indexed, band in
+  # {LL, LH, HL, HH}. An intermediate level's LL is invalid (always
+  # decomposed further) - only the deepest level's LL is a valid target.
+  experiments:
+
+    # -- 128 bits: matches the frozen baseline's own LL-only capacity --
+    - name: cap128_L1_LL
+      dwt_levels: 1
+      subband_plan: [[1, LL]]
+      bit_length: 128
+      alpha: 0.02
+
+    # -- 256 bits: single-level, two subbands (two allocation choices) --
+    - name: cap256_L1_LL_HL
+      dwt_levels: 1
+      subband_plan: [[1, LL], [1, HL]]
+      bit_length: 256
+      alpha: 0.02
+
+    - name: cap256_L1_LL_LH
+      dwt_levels: 1
+      subband_plan: [[1, LL], [1, LH]]
+      bit_length: 256
+      alpha: 0.02
+
+    # -- 512 bits: single-level maximum (all four subbands) --
+    - name: cap512_L1_all4
+      dwt_levels: 1
+      subband_plan: [[1, LL], [1, LH], [1, HL], [1, HH]]
+      bit_length: 512
+      alpha: 0.02
+
+    # -- 512 bits via 2-level DWT instead (detail bands + full level-2),
+    #    same payload size as cap512_L1_all4 for a direct single-level vs
+    #    multi-level comparison at equal capacity usage --
+    - name: cap512_L2_detail
+      dwt_levels: 2
+      subband_plan: [[1, LH], [1, HL], [1, HH], [2, LL], [2, LH], [2, HL], [2, HH]]
+      bit_length: 512
+      alpha: 0.02
+
+    # -- 1024 bits: attempted at 1, 2 and 3 DWT levels. Every one of these
+    #    is EXPECTED TO FAIL (insufficient capacity: 512 / 640 / 704 < 1024)
+    #    and must be recorded as a failure, not forced or truncated. --
+    - name: cap1024_L1_attempt
+      dwt_levels: 1
+      subband_plan: [[1, LL], [1, LH], [1, HL], [1, HH]]
+      bit_length: 1024
+      alpha: 0.02
+
+    - name: cap1024_L2_attempt
+      dwt_levels: 2
+      subband_plan: [[1, LH], [1, HL], [1, HH], [2, LL], [2, LH], [2, HL], [2, HH]]
+      bit_length: 1024
+      alpha: 0.02
+
+    - name: cap1024_L3_attempt
+      dwt_levels: 3
+      subband_plan: [[1, LH], [1, HL], [1, HH], [2, LH], [2, HL], [2, HH], [3, LL], [3, LH], [3, HL], [3, HH]]
+      bit_length: 1024
+      alpha: 0.02
+
+  # ---- output ----
+  output:
+    results_dir: results/phase12_capacity
+    make_plots: true
