@@ -176,6 +176,42 @@ def decode_message(recovered_bits: Sequence[int], base_len: int, reps: int) -> s
     return data[1 : 1 + length].decode("utf-8", errors="replace")
 
 
+def decode_message_strict(
+    recovered_bits: Sequence[int], base_len: int, reps: int
+) -> str | None:
+    """Strict counterpart of :func:`decode_message`, for deciding whether a
+    recovered payload is a *well-formed* watermark message.
+
+    Uses the identical ``[1-byte length header] + UTF-8 body`` layout,
+    repetition count and per-position majority vote as
+    :func:`message_base_bits` / :func:`choose_repetition` / :func:`decode_message`
+    - this is the single payload contract shared by embedding and blind
+    extraction. Returns the decoded text, or ``None`` if the bits do not form a
+    valid message (wrong size, impossible length header, or invalid UTF-8).
+    Never substitutes replacement characters and never raises on bad input.
+    """
+    flat = list(recovered_bits)
+    if reps < 1 or base_len < 8 or base_len % 8 != 0:
+        return None
+    if len(flat) < base_len * reps:
+        return None
+    grid = np.asarray(flat[: base_len * reps], dtype=int).reshape(reps, base_len)
+    voted = (grid.mean(axis=0) >= 0.5).astype(int).tolist()
+    try:
+        data = bits_to_bytes(voted)
+    except ValueError:
+        return None
+    if not data:
+        return None
+    length = data[0]
+    if not 1 <= length <= len(data) - 1:
+        return None
+    try:
+        return data[1 : 1 + length].decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 def character_accuracy(original: str, recovered: str) -> float:
     """Fraction of character positions that agree (length differences count as wrong)."""
     span = max(len(original), len(recovered))

@@ -18,7 +18,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.app import service
+from src.app import final_model, service
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -77,6 +77,98 @@ async def watermark_embed(
     try:
         result = service.run_embed(data, req)
     except service.ServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Phase 17B - the Phase 17 final integrated model
+# ---------------------------------------------------------------------------
+
+@app.get("/api/final-model/info")
+def final_model_info() -> dict:
+    return final_model.final_model_info()
+
+
+@app.post("/api/final-model/embed")
+async def final_model_embed(
+    image: Annotated[UploadFile, File()],
+    payload_source: Annotated[str, Form()] = "message",
+    payload_text: Annotated[str | None, Form()] = None,
+    payload_uuid: Annotated[str | None, Form()] = None,
+    payload_bits: Annotated[str | None, Form()] = None,
+    bit_length: Annotated[int, Form()] = final_model.FINAL_BIT_LENGTH,
+) -> JSONResponse:
+    data = await image.read()
+    req = final_model.FinalEmbedRequest(
+        payload_source=payload_source,
+        payload_text=payload_text,
+        payload_uuid=payload_uuid,
+        payload_bits=payload_bits,
+        bit_length=bit_length,
+    )
+    try:
+        result = final_model.run_final_embed(data, req)
+    except final_model.CheckpointError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except final_model.FinalModelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(result)
+
+
+@app.post("/api/final-model/extract/blind")
+async def final_model_extract_blind(
+    image: Annotated[UploadFile, File()],
+    expected_text: Annotated[str | None, Form()] = None,
+    expected_bits: Annotated[str | None, Form()] = None,
+    payload_bit_length: Annotated[int | None, Form()] = None,
+    repetition: Annotated[int | None, Form()] = None,
+    payload_kind: Annotated[str | None, Form()] = None,
+) -> JSONResponse:
+    """Blind extraction - the watermarked image is the ONLY input. No original.
+
+    ``payload_bit_length`` / ``repetition`` / ``payload_kind`` describe the
+    payload format that was embedded (the page echoes them back from the
+    embed response's ``payload.bit_length`` / ``payload.repetition`` /
+    ``payload.kind``) so the decoder inverts the exact format instead of
+    assuming the decoder's native width.
+    """
+    data = await image.read()
+    req = final_model.ExtractRequest(
+        expected_text=expected_text,
+        expected_bits=expected_bits,
+        payload_bit_length=payload_bit_length,
+        repetition=repetition,
+        payload_kind=payload_kind,
+    )
+    try:
+        result = final_model.run_blind_extract(data, req)
+    except final_model.CheckpointError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except final_model.FinalModelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(result)
+
+
+@app.post("/api/final-model/extract/nonblind")
+async def final_model_extract_nonblind(
+    watermarked: Annotated[UploadFile, File()],
+    original: Annotated[UploadFile, File()],
+    expected_text: Annotated[str | None, Form()] = None,
+    expected_bits: Annotated[str | None, Form()] = None,
+    bit_length: Annotated[int, Form()] = final_model.FINAL_BIT_LENGTH,
+    payload_kind: Annotated[str | None, Form()] = None,
+) -> JSONResponse:
+    """Non-blind extraction - requires BOTH the watermarked and the original image."""
+    wm_data = await watermarked.read()
+    orig_data = await original.read()
+    req = final_model.ExtractRequest(
+        expected_text=expected_text, expected_bits=expected_bits, bit_length=bit_length,
+        payload_kind=payload_kind,
+    )
+    try:
+        result = final_model.run_nonblind_extract(wm_data, orig_data, req)
+    except final_model.FinalModelError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return JSONResponse(result)
 
