@@ -42,6 +42,11 @@ __all__ = ["WindowedExtractor"]
 class WindowedExtractor:
     """Thin, stateful wrapper around a trained windowed blind extractor."""
 
+    # This decoder reads the payload at the image's native resolution (see
+    # _window_batch); ``image_size`` records only the resolution it was TRAINED
+    # at. The production Phase 8 BlindExtractor does rescale, hence the flag.
+    resizes_input = False
+
     def __init__(
         self,
         model: WindowedCNNExtractor,
@@ -82,10 +87,23 @@ class WindowedExtractor:
         return array
 
     def _window_batch(self, rgb_u8: np.ndarray) -> np.ndarray:
-        size = self.image_size
-        if size is not None and rgb_u8.shape[:2] != (size, size):
-            rgb_u8 = cv2.resize(rgb_u8, (size, size), interpolation=cv2.INTER_AREA)
+        # Decode at the image's NATIVE resolution. The embedder writes bit i into
+        # singular value i of the LL sub-band at whatever size the image is, and
+        # DWT-SVD singular values are not resize-invariant: rescaling first
+        # remaps the whole spectrum and destroys the bit<->index correspondence.
+        # Measured on DIV2K covers embedded at their native size, resizing to
+        # 256 before decoding cost ~0.12 BER and dropped exact registry-ID
+        # recovery from ~95% to ~55%.
         sigma = luminance_ll_singular_values(rgb_u8, self.config)
+        needed = self.config.start_sv_index + self.config.bit_length
+        if len(sigma) < needed:
+            raise ValueError(
+                f"image is too small to carry a {self.config.bit_length}-bit payload: its "
+                f"{self.config.subband} sub-band yields {len(sigma)} singular values, "
+                f"but bit {self.config.bit_length - 1} lives at index {needed - 1}. "
+                f"Supply the watermarked image at its original size (at least "
+                f"{2 * needed}x{2 * needed} pixels)."
+            )
         windows = np.stack(
             [
                 bit_window_singular_values(sigma, i, self.config)

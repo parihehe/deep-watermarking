@@ -151,6 +151,58 @@ production pipeline; it does **not** beat the production Phase 8 CNN — this
 decoder is an experimental candidate, not a replacement (see
 [Acceptance bar](#acceptance-bar-unchanged-from-project-rules)).
 
+## Blind-extraction fix (2026-09-06): native-resolution decoding + soft decode
+
+Blind verification in the app was returning wrong IDs at ~chance bit accuracy.
+Two decoder-side defects, both fixed; **the embedder was not changed**.
+
+**1. The decoder rescaled its input (root cause).** `WindowedExtractor` resized
+every image to `image_size` (256) before reading the singular values. But
+`embed()` writes bit *i* into singular value *i* of the LL sub-band **at the
+image's own resolution**, and DWT-SVD singular values are not resize-invariant —
+rescaling remaps the whole spectrum, so the decoder read the wrong values.
+256×256 covers were unaffected (no resize happened), which is why the offline
+evaluation — run entirely on the 256×256 processed split — never saw it, while
+every real user upload at any other size was corrupted. Measured on DIV2K
+covers embedded at their native size:
+
+| cover | rescaled to 256 (old) | native resolution (fixed) |
+|---|---|---|
+| 256×256 | BER 0.225, ID 15/15 | BER 0.225, ID 15/15 |
+| 512×512 | BER 0.365, ID 8/15 | BER 0.242, ID 14/15 |
+| 800×600 | BER 0.365, ID 9/15 | BER 0.235, ID 14/15 |
+| 1024×768 | BER 0.359, ID 8/15 | BER 0.239, ID 15/15 |
+
+**2. Hard majority voting discarded the decoder's confidence.**
+`decode_id_bits` thresholded the probabilities to 0/1 first, so a 0.51 copy and
+a 0.99 copy counted the same. `decode_id_bits_soft` sums log-likelihood ratios
+over the 15 copies instead (additive; the hard codec is unchanged and still used
+by the non-blind path). Held-out DIV2K, 1680 trials over three resolutions:
+
+| | exact ID | gate coverage | wrong decodes shown |
+|---|---|---|---|
+| hard vote, gate 0.78 | 0.96–0.975 | 0.58 | 11 |
+| soft LLR, gate 0.9999 | **0.980–0.984** | **0.79** | **0** |
+
+Because the soft confidence is a posterior (saturates near 1) and the hard one is
+a vote fraction, they need different thresholds — hence
+`RELIABLE_REGISTRY_ID_POSTERIOR` alongside the untouched
+`RELIABLE_REGISTRY_ID_CONFIDENCE`. This is a strict improvement on both axes,
+not a relaxed bar.
+
+### Known ceiling (not a bug)
+
+Raw 64-bit BER stays ~0.19–0.24 and **cannot approach 0** at the frozen
+α = 0.02 operating point: the embedded sign survives the IDWT + uint8 round trip
+only **89.6 %** of the time (measured), so ~0.90 bit accuracy is the hard ceiling
+for *any* blind decoder here, and the non-blind decoder measures ~0.90 too.
+Exact payload recovery comes from the 15× repetition code on top, which is why
+registry-ID recovery is ~98 % while raw BER is ~0.22. A tiny-set overfit probe
+also showed the standardised window feature is the accuracy bottleneck (train
+bit-acc 0.965 standardised vs 0.994 with a locally-detrended window, centre-value
+AUC 0.740 → 0.796), so a detrended feature is the most promising lever if the
+decoder is ever retrained.
+
 ## Google-Colab alternative (optional)
 
 A cloud-GPU (T4/A100) path exists for machines without MPS/CPU appetite for the

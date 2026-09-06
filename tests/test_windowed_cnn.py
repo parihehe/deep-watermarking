@@ -215,16 +215,42 @@ def test_windowed_extractor_predicts_expected_length(tmp_path: Path) -> None:
     assert set(bits).issubset({0, 1})
 
 
-def test_windowed_extractor_resizes_inputs_to_model_size(tmp_path: Path) -> None:
+def test_windowed_extractor_decodes_at_native_resolution(tmp_path: Path) -> None:
+    """The decoder must NOT rescale its input: the embedder writes bit i into
+    singular value i at the image's own size, and rescaling remaps the whole
+    spectrum (measured: ~0.12 BER cost, exact ID recovery 95% -> 55%)."""
     from src.evaluation.windowed_extract import WindowedExtractor
+    from src.models.windowed_cnn import bit_window_singular_values, luminance_ll_singular_values
 
     model = WindowedCNNExtractor(WindowedCNNConfig(bit_length=8, image_size=128)).eval()
     path = tmp_path / "ckpt.pt"
     save_windowed_checkpoint(str(path), model, extra={"image_size": 128})
     extractor = WindowedExtractor.from_checkpoint(str(path))
+    assert extractor.resizes_input is False
 
-    rgb = (np.random.default_rng(0).random((64, 64, 3)) * 255).astype(np.uint8)  # smaller
-    assert extractor.extract_proba(rgb).shape == (8,)
+    # An image at a size other than the one the model was trained at.
+    rgb = (np.random.default_rng(0).random((320, 448, 3)) * 255).astype(np.uint8)
+    probs = extractor.extract_proba(rgb)
+    assert probs.shape == (8,)
+
+    # The windows fed to the model must be those of the UNSCALED image.
+    sigma = luminance_ll_singular_values(rgb, extractor.config)
+    expected = np.stack([bit_window_singular_values(sigma, i, extractor.config) for i in range(8)])
+    np.testing.assert_allclose(extractor._window_batch(rgb), expected)
+
+
+def test_windowed_extractor_rejects_image_too_small_for_payload(tmp_path: Path) -> None:
+    from src.evaluation.windowed_extract import WindowedExtractor
+
+    model = WindowedCNNExtractor(WindowedCNNConfig(bit_length=64, image_size=256)).eval()
+    path = tmp_path / "ckpt.pt"
+    save_windowed_checkpoint(str(path), model, extra={"image_size": 256})
+    extractor = WindowedExtractor.from_checkpoint(str(path))
+
+    # LL of a 64x64 image has only 32 singular values - cannot carry 64 bits.
+    rgb = (np.random.default_rng(0).random((64, 64, 3)) * 255).astype(np.uint8)
+    with pytest.raises(ValueError, match="too small to carry"):
+        extractor.extract_proba(rgb)
 
 
 # ---------------------------------------------------------------------------
@@ -339,3 +365,105 @@ def test_frozen_baseline_defaults_unchanged() -> None:
     assert default.wavelet == "haar"
     assert default.subband == "LL"
     assert default.alpha == 0.010
+
+
+# ---------------------------------------------------------------------------
+# End-to-end payload recovery regression (real checkpoint + real DIV2K covers)
+# ---------------------------------------------------------------------------
+
+_TEST_DIR = _PROCESSED / "test"
+_needs_trained_decoder = pytest.mark.skipif(
+    not _TEST_DIR.is_dir()
+    or not any(_TEST_DIR.glob("*.png"))
+    or not (
+        Path(__file__).resolve().parents[1]
+        / "models"
+        / "experimental"
+        / "windowed_cnn"
+        / "windowed_cnn_best.pt"
+    ).is_file(),
+    reason="trained windowed checkpoint or processed DIV2K test split not available",
+)
+
+
+@_needs_trained_decoder
+@pytest.mark.parametrize("size", [(256, 256), (512, 512), (800, 600)])
+def test_embed_then_blind_extract_recovers_registry_id(size: tuple[int, int]) -> None:
+    """The contract that actually matters: embed a known payload with the real
+    embedder, hand ONLY the watermarked image to the blind decoder, and get the
+    same registry ID back.
+
+    Parametrised over image sizes because the decoder previously rescaled every
+    input to 256x256 before reading the singular values. Since the embedder
+    writes bit i into singular value i at the image's OWN size, that rescale
+    remapped the spectrum and collapsed exact ID recovery from ~95% to ~55% on
+    non-256 covers - a bug no shape/wiring assertion could catch.
+    """
+    import cv2
+
+    from src.evaluation.decoder_loader import windowed_decoder
+    from src.watermark import id_registry
+    from src.watermark.embed import EmbedConfig, embed
+
+    extractor = windowed_decoder()
+    config = EmbedConfig(
+        wavelet="haar", subband="LL", mode="symmetric", alpha=0.02, bit_length=64
+    )
+    covers = sorted(_TEST_DIR.glob("*.png"))[:12]
+    ids = [i for i in range(id_registry.MAX_ENTRIES) if i not in id_registry.DEGENERATE_IDS]
+
+    exact = 0
+    for n, path in enumerate(covers):
+        cover = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+        if cover.shape[:2] != (size[1], size[0]):
+            cover = cv2.resize(cover, size, interpolation=cv2.INTER_CUBIC)
+        embedded_id = ids[n % len(ids)]
+        bits = id_registry.encode_id_bits(embedded_id)
+
+        watermarked = embed(cover, bits, config).watermarked_image
+        # BLIND: the decoder sees the watermarked image and nothing else.
+        probabilities = extractor.extract_proba(watermarked)
+        recovered_id, _confidence, _min_conf = id_registry.decode_id_bits_soft(probabilities)
+        exact += int(recovered_id == embedded_id)
+
+    # The decoder is ~98% exact on held-out DIV2K; the resize bug produced ~55%.
+    # 10/12 is comfortably above the broken regime and below the measured rate.
+    assert exact >= 10, f"only {exact}/{len(covers)} registry IDs recovered at {size}"
+
+
+@_needs_trained_decoder
+def test_blind_extract_beats_rescaled_decoding_on_non_256_cover() -> None:
+    """Directly pins the root cause: decoding at the cover's native resolution
+    must recover more of the payload than decoding a rescaled copy."""
+    import cv2
+
+    from src.evaluation.decoder_loader import windowed_decoder
+    from src.watermark import id_registry
+    from src.watermark.embed import EmbedConfig, embed
+
+    extractor = windowed_decoder()
+    config = EmbedConfig(
+        wavelet="haar", subband="LL", mode="symmetric", alpha=0.02, bit_length=64
+    )
+    native_errors = 0
+    rescaled_errors = 0
+    for n, path in enumerate(sorted(_TEST_DIR.glob("*.png"))[:8]):
+        cover = cv2.resize(
+            cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB),
+            (800, 600),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        bits = np.array(id_registry.encode_id_bits(n % 14 + 1))
+        watermarked = embed(cover, bits.tolist(), config).watermarked_image
+
+        native = (extractor.extract_proba(watermarked) > 0.5).astype(int)
+        rescaled_image = cv2.resize(watermarked, (256, 256), interpolation=cv2.INTER_AREA)
+        rescaled = (extractor.extract_proba(rescaled_image) > 0.5).astype(int)
+
+        native_errors += int((native != bits).sum())
+        rescaled_errors += int((rescaled != bits).sum())
+
+    assert native_errors < rescaled_errors, (
+        f"native-resolution decoding ({native_errors} bit errors) should beat "
+        f"decoding a rescaled copy ({rescaled_errors})"
+    )

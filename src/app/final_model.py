@@ -138,6 +138,30 @@ RELIABLE_TEXT_CONFIDENCE = 0.85
 # adding more messages.
 RELIABLE_REGISTRY_ID_CONFIDENCE = 0.78
 
+# Gate for the SOFT (log-likelihood) registry-ID decode, which is what the blind
+# path now uses whenever the decoder gives per-bit probabilities
+# (``id_registry.decode_id_bits_soft``). This confidence is a posterior
+# probability, not a vote-agreement fraction, so it needs its own - much higher,
+# because posteriors saturate near 1 - threshold, and the two are NOT
+# interchangeable.
+#
+# Calibrated against the windowed decoder on DIV2K test images, embedding all 14
+# usable IDs at the frozen alpha=0.02 operating point. Threshold picked on
+# images 0801-0860 (840 trials) and then confirmed on the untouched held-out
+# images 0861-0900 at three resolutions (1680 further trials, 560 each):
+#
+#   resolution | soft exact-ID | coverage @0.9999 | wrong decodes shown
+#   256x256    |     0.982     |      0.777       |         0
+#   512x512    |     0.984     |      0.807       |         0
+#   800x600    |     0.980     |      0.791       |         0
+#
+# For comparison the previous hard-vote gate (0.78 above) showed 11 wrong
+# decodes across those same 1680 trials at only ~0.58 coverage, so this is a
+# strict improvement in BOTH precision and coverage - not a relaxed bar.
+# As with the hard threshold this is an empirical "no observed errors" cutoff,
+# not a guarantee; re-run the calibration if the codec or decoder changes.
+RELIABLE_REGISTRY_ID_POSTERIOR = 0.9999
+
 _PAYLOAD_SOURCES = ("message", "text", "uuid", "bits", "random")
 
 # ``message`` payloads no longer embed text directly (see
@@ -703,19 +727,29 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
     recovered_registry_id: int | None = None
 
     if is_registry_id:
-        # confidence is the majority-vote agreement over the ID bits, not the
-        # raw pre-vote CNN margin - it's the number that actually reflects how
-        # decisive the repetition code's decode was.
-        recovered_id, confidence, min_bit_confidence = id_registry.decode_id_bits(
-            bits[: id_registry.ENCODED_BITS]
+        # Soft-decision decode: combine the 15 copies of each ID bit by summing
+        # log-likelihood ratios over the decoder's per-bit probabilities rather
+        # than counting hard votes, so a barely-past-0.5 copy no longer counts
+        # the same as a confident one. Measured on held-out DIV2K: exact ID
+        # recovery 0.96 -> 0.98 with strictly better confidence calibration.
+        # Confidence is the posterior that each voted ID bit is right.
+        recovered_id, confidence, min_bit_confidence = id_registry.decode_id_bits_soft(
+            probs[: id_registry.ENCODED_BITS]
         )
         recovered_registry_id = int(recovered_id)
+        # The hard majority vote is still reported for diagnostics/comparison.
+        hard_id, hard_confidence, _ = id_registry.decode_id_bits(bits[: id_registry.ENCODED_BITS])
     else:
         confidence = float(np.mean(np.abs(probs - 0.5)) * 2.0)
         min_bit_confidence = float(np.min(np.abs(probs - 0.5)) * 2.0)
+        hard_id = hard_confidence = None
 
     h, w = image.shape[:2]
-    resized = (h, w) != (extractor.image_size, extractor.image_size)
+    # The windowed decoder reads the payload at the image's native resolution;
+    # the production CNN rescales to its trained input size first.
+    rescales = getattr(extractor, "resizes_input", True)
+    resized = rescales and (h, w) != (extractor.image_size, extractor.image_size)
+    model_input_size = extractor.image_size if rescales else max(h, w)
 
     scored = None
     reliable = False
@@ -729,7 +763,7 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
     else:
         decoded_text = _decode_payload_message(bits, payload_bits=n, repetition=reps)
     reliable_threshold = (
-        RELIABLE_REGISTRY_ID_CONFIDENCE if is_registry_id else RELIABLE_TEXT_CONFIDENCE
+        RELIABLE_REGISTRY_ID_POSTERIOR if is_registry_id else RELIABLE_TEXT_CONFIDENCE
     )
     if not reliable:
         reliable = decoded_text is not None and confidence >= reliable_threshold
@@ -793,14 +827,20 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
             "width": int(w),
             "height": int(h),
             "resized_to_model_input": resized,
-            "model_input_size": int(extractor.image_size),
+            "model_input_size": int(model_input_size),
+            "decoder_trained_at": int(extractor.image_size),
         },
         "recovered": {
             "bit_length": n,
             "bit_string": "".join(map(str, bits)),
-            "confidence_mean": _round(confidence, 4),
-            "confidence_min_bit": _round(min_bit_confidence, 4),
+            "confidence_mean": _round(confidence, 6),
+            "confidence_min_bit": _round(min_bit_confidence, 6),
+            "confidence_kind": ("soft_posterior" if is_registry_id else "mean_bit_margin"),
+            "confidence_threshold": reliable_threshold,
             "registry_id": recovered_registry_id,
+            # diagnostics: what the previous hard majority vote would have said
+            "registry_id_hard_vote": hard_id,
+            "hard_vote_agreement": _round(hard_confidence, 4),
             "text": (decoded_text if reliable else None),
             "text_reliable": bool(reliable),
         },

@@ -115,14 +115,17 @@ def test_windowed_decoder_loads_real_model(tmp_path: Path) -> None:
 class StubWindowed:
     config: object
     image_size: int = 256
+    # extract_proba returns PROBABILITIES that each bit is 1, so 0.5 is the
+    # uninformative decoder (0.0 would mean "certain every bit is 0").
+    proba: float = 0.5
 
     def extract_proba(self, image) -> np.ndarray:
-        return np.zeros(self.config.bit_length)
+        return np.full(self.config.bit_length, self.proba)
 
 
-def _windowed_stub(bit_length: int):
+def _windowed_stub(bit_length: int, proba: float = 0.5):
     cfg = WindowedCNNConfig(bit_length=bit_length, image_size=256)
-    return StubWindowed(config=cfg)
+    return StubWindowed(config=cfg, proba=proba)
 
 
 def test_resolve_default_uses_current() -> None:
@@ -194,10 +197,15 @@ def test_blind_e2e_registry_id_through_windowed(monkeypatch: pytest.MonkeyPatch)
         _png_bytes(_rgb(seed=5)),
         ExtractRequest(payload_bit_length=64, repetition=1, payload_kind="registry_id"),
     )
-    # stub outputs all-zero -> majority vote yields an ID with some confidence
     assert result["decoder"] == "windowed_cnn"
     assert result["recovered"]["bit_length"] == 64
-    assert result["recovered"]["text"] is None  # all-zero is unreliable by design
+    assert result["recovered"]["registry_id"] is not None
+    assert result["recovered"]["confidence_kind"] == "soft_posterior"
+    # An uninformative decoder (p = 0.5 on every bit) carries no evidence, so
+    # the soft decode must bottom out at chance and never surface a message.
+    assert result["recovered"]["confidence_mean"] == pytest.approx(0.5)
+    assert result["recovered"]["text"] is None
+    assert result["recovered"]["text_reliable"] is False
 
 
 def test_blind_default_production_path_unchanged() -> None:
