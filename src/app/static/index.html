@@ -3,275 +3,797 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Vestigia — DWT-SVD Invisible Watermarking</title>
+<meta name="description" content="Vestigia — embed invisible DWT-SVD ownership watermarks and verify them later with a blind decoder; the original image is never needed to check a watermark." />
+<title>Vestigia — invisible image watermarking &amp; verification</title>
 <style>
   :root{
-    --bg:#0f1216; --panel:#171b21; --panel-2:#1e242c; --line:#2b323c;
-    --text:#e7ecf2; --muted:#95a1b2; --accent:#5b9dff; --accent-2:#3ad1a4;
-    --warn:#ffb454; --err:#ff6b6b; --radius:12px;
+    --bg:#0b0e13; --surface:#11151c; --surface-2:#161b24; --surface-3:#1c2230;
+    --line:#202833; --line-2:#2e3a4c;
+    --text:#e8edf3; --text-2:#a7b2c2; --text-3:#7e8ba0;
+    --accent:#5b9dff; --accent-ink:#06101f;
+    --ok:#3ad1a4; --ok-soft:rgba(58,209,164,.10); --ok-line:rgba(58,209,164,.45);
+    --warn:#ffb454; --warn-soft:rgba(255,180,84,.10); --warn-line:rgba(255,180,84,.45);
+    --err:#ff6b6b; --err-soft:rgba(255,107,107,.10); --err-line:rgba(255,107,107,.45);
+    --r-sm:6px; --r-md:10px; --r-lg:14px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg);color:var(--text)}
-  header{padding:22px 28px;border-bottom:1px solid var(--line);background:var(--panel)}
-  header h1{margin:0;font-size:18px;font-weight:600;letter-spacing:.2px}
-  header p{margin:4px 0 0;color:var(--muted);font-size:13px}
-  header .pill{float:right;font-size:12px;color:var(--muted);border:1px solid var(--line);
-    padding:4px 10px;border-radius:999px}
-  main{display:grid;grid-template-columns:360px 1fr;gap:22px;padding:22px 28px;max-width:1400px;margin:0 auto}
-  @media (max-width:920px){main{grid-template-columns:1fr}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
-  .card h2{margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
-  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
-  label:first-of-type{margin-top:0}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+  .skip{position:absolute;left:-999px;top:0;background:var(--surface-3);color:var(--text);padding:10px 14px;z-index:50}
+  .skip:focus{left:16px;top:16px}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--text-2)}
+  .dim{color:var(--text-3)}
+  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+  /* ---------- top bar ---------- */
+  .topbar{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;gap:22px;height:58px}
+  .brand{display:flex;align-items:baseline;gap:10px;text-decoration:none;color:var(--text)}
+  .brand b{font-size:17px;letter-spacing:.3px;font-weight:650}
+  .brand span{font-family:var(--mono);font-size:11px;color:var(--text-3);letter-spacing:.4px}
+  .nav{display:flex;gap:4px;margin-left:auto}
+  .nav a{color:var(--text-2);text-decoration:none;font-size:14px;border-radius:var(--r-sm);padding:8px 12px;border:1px solid transparent}
+  .nav a:hover{color:var(--text);background:var(--surface-2)}
+  .nav a.active{color:var(--text);background:var(--surface-2);border-color:var(--line)}
+  .status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--text-2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;white-space:nowrap}
+  .status .dot{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
+  .status.on .dot{background:var(--ok)}
+  @media (max-width:860px){
+    .status .p2{display:none}
+    .topbar .wrap{gap:12px;padding:0 16px}
+    .brand span{display:none}
+  }
+
+  /* ---------- hero / landing ---------- */
+  .hero{position:relative;padding:84px 0 52px;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:-140px auto auto -80px;width:560px;height:560px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%,rgba(91,157,255,.16),rgba(58,209,164,.05) 55%,transparent 72%);
+    pointer-events:none}
+  .hero::after{content:"";position:absolute;inset:auto -120px -200px auto;width:520px;height:520px;border-radius:50%;
+    background:radial-gradient(circle at 60% 40%,rgba(58,209,164,.10),rgba(91,157,255,.04) 58%,transparent 75%);
+    pointer-events:none}
+  .hero .wrap{position:relative}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-3);margin:0 0 16px}
+  .hero h1{font-size:44px;line-height:1.08;letter-spacing:-1.4px;font-weight:600;margin:0 0 16px;max-width:760px}
+  .hero h1 em{font-style:normal;color:var(--accent)}
+  .hero p.lede{font-size:17px;max-width:600px;color:var(--text-2);margin:0 0 30px}
+  .ctas{display:flex;flex-wrap:wrap;gap:14px}
+  .cta{display:inline-flex;align-items:center;gap:10px;font:600 16px/1 var(--font);border-radius:999px;padding:16px 26px;text-decoration:none;cursor:pointer;border:1px solid transparent}
+  .cta.primary{background:var(--text);color:#0b0e13}
+  .cta.primary:hover{background:#ffffff}
+  .cta.ghost{background:transparent;color:var(--text);border-color:var(--line-2)}
+  .cta.ghost:hover{border-color:var(--accent);color:var(--accent)}
+  .cta .k{font-family:var(--mono);font-size:11px;opacity:.65;letter-spacing:.5px}
+  .spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0;margin:54px 0 0;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
+  .spec>div{padding:18px 20px;border-right:1px solid var(--line)}
+  .spec>div:last-child{border-right:0}
+  .spec dt{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-3);margin-bottom:8px}
+  .spec dd{margin:0;font-size:14px;color:var(--text)}
+  .spec dd small{display:block;color:var(--text-2);font-size:12.5px;margin-top:3px}
+  @media (max-width:640px){
+    .hero{padding-top:52px}
+    .hero h1{font-size:32px;letter-spacing:-.8px}
+    .spec>div{border-right:0;border-bottom:1px solid var(--line)}
+    .spec>div:last-child{border-bottom:0}
+  }
+
+  .steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:34px;margin:40px 0 64px;padding:34px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .step .n{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:1px}
+  .step h2{font-size:16.5px;font-weight:600;margin:10px 0 8px;letter-spacing:-.2px}
+  .step p{margin:0;color:var(--text-2);font-size:14px}
+  @media (max-width:860px){.steps{grid-template-columns:1fr;gap:24px}}
+
+  /* ---------- shared panels ---------- */
+  section.panel{display:none;padding:44px 0 72px}
+  section.panel.on{display:block}
+  .panel-head{margin-bottom:22px}
+  .panel-head h1{font-size:24px;letter-spacing:-.5px;font-weight:600;margin:0 0 6px}
+  .panel-head p{margin:0;color:var(--text-2);font-size:14.5px;max-width:720px}
+  .cols{display:grid;grid-template-columns:420px 1fr;gap:24px;align-items:start}
+  @media (max-width:980px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:22px}
+  .card h2{font-family:var(--mono);font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-3);margin:0 0 16px;font-weight:600}
+
+  /* ---------- forms ---------- */
+  label.field{display:block;margin:14px 0 0}
+  label.field:first-child{margin-top:0}
+  label.field>span{display:block;font-size:13px;color:var(--text-2);margin-bottom:6px}
+  label.field>span b{color:var(--text);font-weight:600}
   input[type=text],input[type=number],select,textarea{
-    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
-    border-radius:8px;padding:9px 10px;font:inherit}
-  textarea{resize:vertical;min-height:52px}
-  input[type=range]{width:100%}
-  .row{display:flex;gap:10px}
-  .row>*{flex:1}
-  .dropzone{border:1.5px dashed var(--line);border-radius:10px;padding:20px;text-align:center;
-    color:var(--muted);cursor:pointer;transition:.15s;background:var(--panel-2)}
-  .dropzone.drag{border-color:var(--accent);color:var(--text)}
-  .dropzone strong{color:var(--text)}
-  button.primary{margin-top:16px;width:100%;background:var(--accent);color:#06101f;border:0;
-    border-radius:9px;padding:11px 14px;font:inherit;font-weight:600;cursor:pointer}
-  button.primary:disabled{opacity:.55;cursor:not-allowed}
-  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text);
-    border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
-  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+    width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+    border-radius:var(--r-sm);padding:10px 12px;font:inherit}
+  input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+  ::placeholder{color:#7e8ba0;opacity:1}
+  textarea{resize:vertical;min-height:58px;font-family:var(--mono);font-size:13.5px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:520px){.row{grid-template-columns:1fr}}
+  .hint{font-size:12.5px;color:var(--text-3);margin-top:6px;line-height:1.5}
+  .fixed{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;font-family:var(--mono);font-size:13px;color:var(--text-2)}
+  .fixed b{color:var(--text);font-weight:600}
+  button.btn{border:0;border-radius:var(--r-sm);font:600 15px/1 var(--font);cursor:pointer;padding:13px 18px;color:var(--accent-ink);background:var(--accent)}
+  button.btn:hover{background:#6faeff}
+  button.btn:disabled{opacity:.55;cursor:not-allowed}
+  button.btn.block{width:100%;margin-top:18px}
+  button.quiet{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:var(--r-sm);font:inherit;padding:8px 12px;cursor:pointer}
+  button.quiet:hover{color:var(--text);border-color:var(--accent)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--accent-ink);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .spin{animation:none}
+    *{transition:none!important}
+  }
+
+  /* ---------- drop zones ---------- */
+  label.drop{display:block;border:1.5px dashed var(--line-2);border-radius:var(--r-md);padding:26px 20px;text-align:center;cursor:pointer;background:var(--surface-2);transition:border-color .15s}
+  label.drop:hover{border-color:var(--line-2)}
+  label.drop.drag{border-color:var(--accent)}
+  label.drop strong{display:block;font-weight:600;margin-bottom:4px}
+  label.drop span{font-size:12.5px;color:var(--text-3)}
+  label.drop .chosen{font-family:var(--mono);font-size:12.5px;color:var(--accent);margin-top:8px;display:none;word-break:break-all}
+  label.drop.has .chosen{display:block}
+
+  /* ---------- banners / status ---------- */
+  .banner{border-radius:var(--r-md);padding:12px 14px;font-size:13.5px;margin-bottom:16px;display:none}
+  .banner.show{display:block}
+  .banner.ok{background:var(--ok-soft);border:1px solid var(--ok-line);color:var(--text)}
+  .banner.warn{background:var(--warn-soft);border:1px solid var(--warn-line);color:var(--text)}
+  .banner.err{background:var(--err-soft);border:1px solid var(--err-line);color:var(--text)}
+
+  /* ---------- metrics / images ---------- */
   .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .metric{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px}
-  .metric .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
-  .metric .v{font-size:22px;font-weight:650;margin-top:4px}
-  .metric .u{font-size:12px;color:var(--muted);margin-left:3px}
-  .images{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
-  @media (max-width:920px){.images{grid-template-columns:1fr}.metrics{grid-template-columns:1fr}}
+  .metric{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);padding:14px}
+  .metric .k{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-3)}
+  .metric .v{font-size:21px;font-weight:650;margin-top:4px;letter-spacing:-.3px}
+  .metric .u{font-size:11.5px;color:var(--text-3)}
+  .metric.sub .v{font-size:16px;font-weight:600}
+  .images{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+  @media (max-width:920px){.metrics{grid-template-columns:1fr 1fr}.images{grid-template-columns:1fr}}
   figure{margin:0}
-  figure img{width:100%;border-radius:10px;border:1px solid var(--line);background:#000;display:block}
-  figcaption{font-size:12px;color:var(--muted);margin-top:6px;text-align:center}
-  .bits{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;
-    word-break:break-all;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
-    padding:10px;color:var(--muted);max-height:96px;overflow:auto}
-  .banner{border-radius:9px;padding:11px 13px;font-size:13px;margin-bottom:14px;display:none}
-  .banner.err{display:block;background:rgba(255,107,107,.12);border:1px solid var(--err);color:#ffd0d0}
-  .banner.ok{display:block;background:rgba(58,209,164,.1);border:1px solid var(--accent-2);color:#c6f4e6}
-  .muted{color:var(--muted)} .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid #06101f;border-top-color:transparent;
-    border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
-  @keyframes s{to{transform:rotate(360deg)}}
-  details{margin-top:12px}summary{cursor:pointer;color:var(--muted);font-size:13px}
-  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
-  td{padding:4px 0;border-bottom:1px solid var(--line)} td:last-child{text-align:right}
+  figure img{width:100%;border-radius:var(--r-md);border:1px solid var(--line);background:#000;display:block}
+  figcaption{font-size:12px;color:var(--text-3);margin-top:6px;text-align:center}
+
+  /* ---------- results ---------- */
+  .block{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
+  .block h3{font-family:var(--mono);font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-3);margin:0 0 12px;font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  td{padding:6px 0;border-bottom:1px solid var(--line)}
+  tr:last-child td{border-bottom:0}
+  td:first-child{color:var(--text-2)}
+  td:last-child{text-align:right;font-family:var(--mono);color:var(--text);word-break:break-all}
+  .bits{font-family:var(--mono);font-size:11.5px;word-break:break-all;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--text-2);max-height:110px;overflow:auto;line-height:1.7}
+  .kv{display:flex;gap:14px;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--text-2)}
+  .kv .v{font-family:var(--mono);text-align:right;word-break:break-all}
+  .kv .v.big{font-size:19px;font-weight:650;color:var(--accent);letter-spacing:-.3px}
+  .card .empty{color:var(--text-3);font-size:14px;padding:6px 0}
+  .idbadge{font-family:var(--mono);font-size:30px;font-weight:650;letter-spacing:1px;color:var(--accent);line-height:1.2}
+  .confirm{border:1px solid var(--ok-line);background:var(--ok-soft);border-radius:var(--r-md);padding:16px}
+  .confirm .who{font-size:16px;font-weight:600;margin:6px 0 0}
+  .confirm .why{color:var(--text-2);font-size:13.5px;margin-top:4px}
+  details{margin-top:16px;border:1px solid var(--line);border-radius:var(--r-md)}
+  summary{cursor:pointer;color:var(--text-2);font-size:13.5px;padding:12px 14px;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";color:var(--accent);font-size:11px}
+  details[open] summary::before{content:"▾ "}
+  details .inner{padding:0 14px 14px}
+  .download{margin-top:16px}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--text-2)}
+  .chip.on{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
+  .chip.off{color:var(--warn);border-color:var(--warn-line);background:var(--warn-soft)}
+
+  footer{border-top:1px solid var(--line);padding:22px 0 34px;color:var(--text-3);font-size:12.5px}
+  footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
 </style>
 </head>
 <body>
-<header>
-  <span class="pill" id="health">checking…</span>
-  <h1>Vestigia</h1>
-  <p>Invisible &amp; robust digital image watermarking &middot; drives the frozen Phase 6 baseline: DWT&nbsp;→&nbsp;LL&nbsp;→&nbsp;SVD&nbsp;→&nbsp;multiplicative singular-value modulation&nbsp;→&nbsp;IDWT</p>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#home" aria-label="Vestigia home"><b>Vestigia</b><span>DWT·SVD invisible watermarking</span></a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#home" id="nav-home">Overview</a>
+      <a href="#embed" id="nav-embed">Embed</a>
+      <a href="#verify" id="nav-verify">Verify</a>
+    </nav>
+    <div class="status" id="status" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="status-txt">connecting…</span></div>
+  </div>
 </header>
 
-<main>
-  <form class="card" id="form">
-    <h2>Input</h2>
+<main id="main">
 
-    <div class="dropzone" id="drop">
-      <strong>Click or drop an image</strong><br />
-      <span id="fname">PNG / JPEG / BMP / TIFF · any size up to 2048&times;2048</span>
-      <input type="file" id="file" accept="image/*" hidden />
-    </div>
-
-    <label>Watermark payload source</label>
-    <select id="payload_source">
-      <option value="random">Random (UUID → SHA-256)</option>
-      <option value="text">Text (UTF-8 → SHA-256)</option>
-      <option value="uuid">Specific UUID</option>
-      <option value="bits">Explicit bit string</option>
-    </select>
-    <div id="payload_text_wrap" hidden><label>Text</label>
-      <textarea id="payload_text" placeholder="e.g. owner:alice; 2026-08-27"></textarea></div>
-    <div id="payload_uuid_wrap" hidden><label>UUID</label>
-      <input type="text" id="payload_uuid" placeholder="00000000-0000-0000-0000-000000000000" /></div>
-    <div id="payload_bits_wrap" hidden><label>Bits (0/1, zero-padded to payload size)</label>
-      <input type="text" id="payload_bits" class="mono" placeholder="10110010…" /></div>
-
-    <div class="row">
-      <div>
-        <label>Payload size (bits)</label>
-        <select id="bit_length"></select>
-      </div>
-      <div>
-        <label>Embedding strength α — <span id="alpha_val" class="mono">0.010</span></label>
-        <input type="range" id="alpha" min="0.001" max="0.1" step="0.001" value="0.010" />
-        <div class="hint">baseline sweep: 0.005 / 0.010 / 0.015</div>
+  <!-- ============ LANDING ============ -->
+  <section id="home" class="panel on">
+    <div class="hero">
+      <div class="wrap">
+        <p class="eyebrow">Frozen Phase 6 embedder · blind Phase 8 / windowed decoder</p>
+        <h1>Embed an invisible ownership mark.<br />Verify it later — <em>no original image</em>.</h1>
+        <p class="lede">Vestigia modifies the DWT SVD spectrum so subtly the picture is effectively unchanged
+        (a fixed α&nbsp;=&nbsp;0.02), yet the watermark survives as its own reference. A blind CNN reads it
+        back from the distributed file alone and matches the recovered ID against a local registry.</p>
+        <div class="ctas">
+          <a class="cta primary" href="#embed"><span class="k">EMBED</span> Embed watermark</a>
+          <a class="cta ghost" href="#verify"><span class="k">VERIFY</span> Verify watermark</a>
+        </div>
+        <dl class="spec" aria-label="Product specification">
+          <div><dt>Payload</dt><dd>64-bit registry ID<small>4-bit text ID repeated 15×, majority-voted; or 8–1024 raw bits</small></dd></div>
+          <div><dt>Strength α</dt><dd>0.020 fixed<small>frozen multiplicative modulation, Haar → LL → SVD</small></dd></div>
+          <div><dt>Blind decoder</dt><dd id="spec-decoder">blind_cnn*<small>per-size Phase 8 CNN; windowed decoder opt-in</small></dd></div>
+          <div><dt>Original needed?</dt><dd>No<small>verification uses the watermarked file only</small></dd></div>
+        </dl>
       </div>
     </div>
-
-    <div class="row">
-      <div><label>Wavelet</label><select id="wavelet"></select></div>
-      <div><label>Subband</label><select id="subband"></select></div>
-    </div>
-    <label>Overflow subbands (optional, comma-separated — used only if the payload exceeds one subband)</label>
-    <input type="text" id="extra_subbands" class="mono" placeholder="HL, LH, HH" />
-
-    <button class="primary" id="go" type="submit" disabled>Embed watermark</button>
-    <div class="hint" id="cap_hint"></div>
-  </form>
-
-  <section class="card" id="results">
-    <h2>Result</h2>
-    <div class="banner" id="banner"></div>
-    <div id="empty" class="muted">Upload an image and run an embed to see the watermarked output and metrics.</div>
-
-    <div id="output" hidden>
-      <div class="metrics">
-        <div class="metric"><div class="k">PSNR</div><div class="v"><span id="m_psnr">–</span><span class="u">dB</span></div></div>
-        <div class="metric"><div class="k">SSIM</div><div class="v" id="m_ssim">–</div></div>
-        <div class="metric"><div class="k">MSE</div><div class="v" id="m_mse">–</div></div>
+    <div class="wrap">
+      <div class="steps">
+        <div class="step">
+          <div class="n">01</div>
+          <h2>Embed</h2>
+          <p>The Phase 6 DWT-SVD embedder writes your message's registry ID into the LL singular values at α&nbsp;0.02.
+          Payload evidence — embedded bits, recovered bits, BER, PSNR/SSIM — is returned from one call.</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h2>Distribute</h2>
+          <p>Hand out the watermarked file. No key, no sidecar, no original — the watermark is self-contained
+          in the image spectrum and everything needed to verify it is registered locally.</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h2>Verify</h2>
+          <p>Upload the image here. A blind decoder reconstructs the ID bits, the app recovers confidence and also
+          reports the confidence of the vote, then looks the ID up in the message registry for the ownership text.</p>
+        </div>
       </div>
-
-      <div class="images">
-        <figure><img id="img_original" alt="original" /><figcaption>Original</figcaption></figure>
-        <figure><img id="img_watermarked" alt="watermarked" /><figcaption>Watermarked</figcaption></figure>
-        <figure><img id="img_residual" alt="residual" /><figcaption>Residual (×15)</figcaption></figure>
-      </div>
-
-      <details open>
-        <summary>Watermark recovery — non-blind reference decoder</summary>
-        <table>
-          <tr><td>Bit error rate (BER)</td><td class="mono" id="r_ber">–</td></tr>
-          <tr><td>Bit accuracy</td><td class="mono" id="r_acc">–</td></tr>
-          <tr><td>Normalized correlation (NC)</td><td class="mono" id="r_nc">–</td></tr>
-          <tr><td>Payload source</td><td class="mono" id="r_src">–</td></tr>
-          <tr><td>Effective config</td><td class="mono" id="r_cfg">–</td></tr>
-        </table>
-        <p class="hint">This decoder compares the watermarked image against the original.
-          A blind decoder that needs no original is Phase 8 (CNN).</p>
-      </details>
-
-      <details>
-        <summary>Embedded payload bits</summary>
-        <div class="bits" id="r_bits"></div>
-        <div class="hint">recovered bits</div>
-        <div class="bits" id="r_rbits"></div>
-      </details>
     </div>
   </section>
+
+  <!-- ============ EMBED ============ -->
+  <section id="embed" class="panel">
+    <div class="wrap">
+      <div class="panel-head">
+        <p class="eyebrow" style="margin:0 0 10px">01 · Blade the source</p>
+        <h1>Embed a watermark</h1>
+        <p>Choose an image and its watermark text. The text is registered to a 4-bit ID and that ID is repeated
+        15× across the 64-bit payload the embedder writes into the LL subband. The result panel shows the
+        registry entry, quality, reference-decoder recovery, and a reference payload to reuse in Verify.</p>
+      </div>
+      <div class="cols">
+        <form class="card" id="form">
+          <h2>Input</h2>
+          <label class="drop" id="drop">
+            <input type="file" id="file" accept="image/*" hidden />
+            <strong>Click or drop an image</strong>
+            <span id="fname">PNG / JPEG / BMP / TIFF · any size up to 2048×2048</span>
+            <span class="chosen" id="chosen"></span>
+          </label>
+
+          <label class="field">
+            <span>Watermark text</span>
+            <textarea id="payload_text" placeholder="e.g. owner:alice; 2026-09-06"></textarea>
+          </label>
+          <p class="hint" id="cap_hint">Registered locally as a 4-bit ID repeated 15× inside a 64-bit payload
+          (gear: the exact repetition &amp; kind are echoed into the Verify screen automatically).</p>
+
+          <details>
+            <summary>Other payload sources</summary>
+            <div class="inner">
+              <label class="field">
+                <span>Payload source</span>
+                <select id="payload_source">
+                  <option value="message" selected>Message → registry ID</option>
+                  <option value="text">Text (UTF-8 → SHA-256)</option>
+                  <option value="uuid">Specific UUID</option>
+                  <option value="bits">Explicit bit string</option>
+                  <option value="random">Random (UUID → SHA-256)</option>
+                </select>
+              </label>
+              <label class="field" id="payload_uuid_wrap" hidden>
+                <span>UUID</span>
+                <input type="text" id="payload_uuid" placeholder="00000000-0000-0000-0000-000000000000" spellcheck="false" />
+              </label>
+              <label class="field" id="payload_bits_wrap" hidden>
+                <span>Bits (0/1, zero-padded to payload size)</span>
+                <input type="text" id="payload_bits" class="mono" placeholder="10110010…" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>Payload size (bits)</span>
+                <select id="bit_length"></select>
+              </label>
+              <p class="hint">The final model embeds at a <b>fixed α = 0.020</b>, Haar / LL. For non-message
+              payloads the blind decoder is available up to 128 bits.</p>
+            </div>
+          </details>
+
+          <label class="field">
+            <span>Embedding strength α (frozen)</span>
+            <div class="fixed"><span>0.020</span><span class="dim">— fixed Phase 17 final-model selection, not adjustable</span></div>
+          </label>
+
+          <button class="btn block" id="go" type="submit" disabled>Embed watermark</button>
+        </form>
+
+        <div class="card" id="results">
+          <h2>Result</h2>
+          <div class="banner" id="banner" role="status" aria-live="polite"></div>
+          <div class="empty" id="empty">Run an embed to see the registry entry, watermarked output, and metrics here.</div>
+
+          <div id="output" hidden>
+            <div class="block">
+              <h3>Registry entry</h3>
+              <div class="kv"><span class="k">Assigned ID</span><span class="v big" id="r_id">–</span></div>
+              <div class="kv"><span class="k">Payload</span><span class="v" id="r_desc">–</span></div>
+              <div class="kv"><span class="k">Recovery (reference decoder)</span><span class="v" id="r_status">–</span></div>
+            </div>
+
+            <div class="block">
+              <h3>Reference payload for verification</h3>
+              <div class="kv"><span class="k">text</span><span class="v" id="r_text">–</span></div>
+              <div class="kv"><span class="k">bit_length · repetition · kind</span><span class="v" id="r_fmt">–</span></div>
+              <button type="button" class="quiet" id="to-verify" style="margin-top:10px">Use in Verify →</button>
+            </div>
+
+            <div class="metrics" style="margin-top:18px">
+              <div class="metric"><div class="k">PSNR</div><div class="v"><span id="m_psnr">–</span><span class="u"> dB</span></div></div>
+              <div class="metric"><div class="k">SSIM</div><div class="v" id="m_ssim">–</div></div>
+              <div class="metric"><div class="k">MSE</div><div class="v" id="m_mse">–</div></div>
+            </div>
+
+            <div class="images">
+              <figure><img id="img_original" alt="original image" /><figcaption>Original</figcaption></figure>
+              <figure><img id="img_watermarked" alt="watermarked image" /><figcaption>Watermarked</figcaption></figure>
+              <figure><img id="img_residual" alt="residual difference amplified 15x" /><figcaption>Residual (×15)</figcaption></figure>
+            </div>
+
+            <div class="block">
+              <h3>Reference-decoder recovery</h3>
+              <table>
+                <tr><td>Decoder</td><td id="r_decoder">–</td></tr>
+                <tr><td>Bit error rate (BER)</td><td id="r_ber">–</td></tr>
+                <tr><td>Bit accuracy</td><td id="r_acc">–</td></tr>
+                <tr><td>Normalized correlation (NC)</td><td id="r_nc">–</td></tr>
+              </table>
+              <p class="hint">This non-blind reference needs the original — it reports how cleanly the bits went
+              in. The Verify screen instead uses the blind CNN, which needs nothing but the watermarked image.</p>
+            </div>
+
+            <div class="block">
+              <h3>Embedded payload bits</h3>
+              <div class="bits" id="r_bits"></div>
+              <p class="hint">recovered bits</p>
+              <div class="bits" id="r_rbits"></div>
+            </div>
+
+            <a class="cta ghost download" id="dl" href="#" download="watermarked.png">⬇ Download watermarked image</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VERIFY ============ -->
+  <section id="verify" class="panel">
+    <div class="wrap">
+      <div class="panel-head">
+        <p class="eyebrow" style="margin:0 0 10px">02 · Read the blade</p>
+        <h1>Verify a watermark</h1>
+        <p>The watermarked image is the only input. The blind decoder reconstructs the payload, reports the
+        confidence of that reconstruction, and looks the recovered ID up in the local message registry.
+        No original image, key, or embedding metadata is required.</p>
+      </div>
+      <div class="cols">
+        <form class="card" id="vform">
+          <h2>Watermarked image</h2>
+          <label class="drop" id="vdrop">
+            <input type="file" id="vfile" accept="image/*" hidden />
+            <strong>Click or drop the watermarked image</strong>
+            <span>PNG / JPEG · original image is <em>not</em> needed</span>
+            <span class="chosen" id="vchosen"></span>
+          </label>
+
+          <details open>
+            <summary>Payload format (usually pre-filled automatically)</summary>
+            <div class="inner">
+              <div class="row">
+                <label class="field">
+                  <span>Payload size (bits)</span>
+                  <input type="number" id="v_bits" value="64" min="1" max="1024" />
+                </label>
+                <label class="field">
+                  <span>Repetition</span>
+                  <input type="number" id="v_rep" value="15" min="1" max="64" />
+                </label>
+              </div>
+              <label class="field">
+                <span>Payload kind</span>
+                <select id="v_kind">
+                  <option value="registry_id" selected>registry_id (majority-voted ID → message)</option>
+                  <option value="raw">raw (header+repetition text)</option>
+                </select>
+              </label>
+              <label class="field" id="v_exp_wrap">
+                <span>Reference text (optional — enables text-match scoring)</span>
+                <input type="text" id="v_exp_text" placeholder="the exact text you embedded" spellcheck="false" />
+              </label>
+              <label class="field" id="v_ref_wrap">
+                <span>Reference bits (optional — enables BER / bit-accuracy scoring)</span>
+                <input type="text" id="v_exp_bits" class="mono" placeholder="paste the embedded bit string from Embed" spellcheck="false" />
+              </label>
+              <p class="hint">Registry-ID payloads from the Embed step carry bit_length 64, repetition 15,
+              kind registry_id automatically. Leave the reference fields blank for a pure blind check —
+              BER has no meaning without the embedded reference bits.</p>
+            </div>
+          </details>
+
+          <button class="btn block" id="vgo" type="submit" disabled>Verify watermark</button>
+        </form>
+
+        <div class="card" id="vresults">
+          <h2>Verification result</h2>
+          <div class="banner" id="vbanner" role="status" aria-live="polite"></div>
+          <div class="empty" id="vempty">Upload a watermarked image and verify it to see the recovered ID,
+          confidence, BER (when a reference is given), and registry match here.</div>
+
+          <div id="voutput" hidden>
+            <div id="vconfirm" class="confirm" hidden>
+              <div style="font-family:var(--mono);font-size:11px;letter-spacing:1.2px;color:var(--ok)">✓ WATERMARK DETECTED &amp; VERIFIED</div>
+              <div class="who" id="vwho">–</div>
+              <div class="why" id="vwhy">–</div>
+            </div>
+
+            <div class="block">
+              <h3>Detection</h3>
+              <div class="kv"><span class="k">Recovered ID</span><span class="v big" id="v_id">–</span></div>
+              <div class="kv"><span class="k">Registry match</span><span class="v" id="v_reg">–</span></div>
+              <div class="kv"><span class="k">Confidence (ID vote agreement)</span><span class="v" id="v_conf">–</span></div>
+              <div class="kv"><span class="k">Min bit confidence</span><span class="v" id="v_confmin">–</span></div>
+              <div class="kv"><span class="k">Decoder</span><span class="v" id="v_model">–</span></div>
+              <div class="kv" id="v_fb_row"><span class="k">Fallback note</span><span class="v" id="v_fallback">–</span></div>
+              <div class="kv"><span class="k">Detected payload</span><span class="v" id="v_status">–</span></div>
+            </div>
+
+            <div class="block" id="v_scoring" hidden>
+              <h3>Scoring against reference</h3>
+              <table>
+                <tr><td>Bit error rate (BER)</td><td id="v_ber">–</td></tr>
+                <tr><td>Bit accuracy</td><td id="v_acc">–</td></tr>
+                <tr><td>Text match</td><td id="v_tmatch">–</td></tr>
+                <tr><td>Character accuracy</td><td id="v_char">–</td></tr>
+              </table>
+            </div>
+
+            <div class="block">
+              <h3>Recovered bit string</h3>
+              <div class="bits" id="v_bits_str"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
 </main>
 
+<footer>
+  <div class="wrap">
+    <span class="mono">Vestigia · DWT-SVD invisible watermarking · Phase 7 app</span>
+    <span>Blind verification: <span id="ft-decoder">blind_cnn*</span> · <a href="/docs" style="color:var(--text-3)">API under /api</a></span>
+  </div>
+</footer>
+
 <script>
+"use strict";
 const $ = s => document.querySelector(s);
-let fileBlob = null, OPTS = null;
+const $$ = s => Array.from(document.querySelectorAll(s));
+let fileBlob = null, vfileBlob = null, INFO = null;
 
+/* ---------- hash router ---------- */
+const PANELS = ['home','embed','verify'];
+function route(){
+  const h = location.hash.replace(/^#/,'') || 'home';
+  const target = PANELS.includes(h) ? h : 'home';
+  PANELS.forEach(p => {
+    const el = document.getElementById(p);
+    if (el) el.classList.toggle('on', p === target);
+  });
+  const nav = $$('.nav a');
+  nav.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#'+target));
+  const t = document.getElementById('nav-'+target);
+  if (t) t.classList.add('active');
+}
+window.addEventListener('hashchange', route);
+
+/* ---------- boot: health + model info ---------- */
 async function boot(){
+  let h = null, on = false;
   try{
-    const h = await (await fetch('/api/health')).json();
-    $('#health').textContent = h.cuda ? 'torch '+h.torch+' · CUDA' : 'torch '+(h.torch||'?')+' · CPU';
-  }catch{ $('#health').textContent = 'offline'; }
+    h = await (await fetch('/api/health')).json();
+    on = true;
+  }catch{}
+  const st = $('#status-txt');
+  if (on) st.textContent = (h.cuda ? 'GPU' : 'CPU') + ' · torch ' + (h.torch||'?');
+  else st.textContent = 'offline';
+  $('#status').classList.toggle('on', on);
 
-  OPTS = await (await fetch('/api/options')).json();
-  fill('#wavelet', OPTS.wavelets, 'haar');
-  fill('#subband', OPTS.subbands, 'LL');
-  fill('#bit_length', OPTS.bit_lengths.map(String), '64');
-  updateCap();
-}
-function fill(sel, values, def){
-  const el = $(sel); el.innerHTML = '';
-  for(const v of values){ const o=document.createElement('option'); o.value=v; o.textContent=v; el.appendChild(o); }
-  if(def!=null) el.value = def;
+  try{
+    INFO = await (await fetch('/api/final-model/info')).json();
+  }catch{ INFO = null; }
+  if (INFO){
+    const sizes = INFO.extraction && INFO.extraction.blind ? INFO.extraction.blind.available_sizes : [];
+    const wmOn = INFO.decoder_mode === 'windowed_cnn' && INFO.windowed_cnn && INFO.windowed_cnn.checkpoint_available;
+    const decName = sizes.length ? 'blind_cnn_' + sizes.join('/') + 'bit' : 'blind_cnn — no checkpoints present';
+    $('#spec-decoder').innerHTML = (wmOn ? 'windowed_cnn*' : decName) +
+      '<small>model ' + INFO.model + ' · decoder ' + INFO.decoder_mode +
+      (INFO.windowed_cnn && INFO.windowed_cnn.checkpoint_available ? ' · windowed checkpoint present' : ' · no windowed checkpoint') + '</small>';
+    $('#ft-decoder').textContent = INFO.decoder_mode;
+    st.textContent += ' · ' + INFO.decoder_mode;
+  }
 }
 
-// ---- file input ----
-const drop = $('#drop');
-drop.addEventListener('click', ()=> $('#file').click());
-$('#file').addEventListener('change', e => setFile(e.target.files[0]));
-['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag')}));
-['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag')}));
-drop.addEventListener('drop', e => setFile(e.dataTransfer.files[0]));
-function setFile(f){
-  if(!f || !f.type.startsWith('image/')) return;
+/* ---------- generic drop zones ---------- */
+function wireDrop(labelSel, inputSel, chosenSel, onSet){
+  const label = $(labelSel), input = $(inputSel);
+  label.tabIndex = 0;
+  label.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); input.click(); }
+  });
+  label.addEventListener('focus', () => label.classList.add('drag'));
+  label.addEventListener('blur', () => label.classList.remove('drag'));
+  function set(f){
+    if (!f || !f.type.startsWith('image/')) return;
+    onSet(f);
+    label.classList.add('has');
+    $(chosenSel).textContent = f.name + '  ·  ' + Math.round(f.size/1024) + ' KB';
+  }
+  input.addEventListener('change', e => set(e.target.files && e.target.files[0]));
+  ['dragover','dragenter'].forEach(ev => label.addEventListener(ev, e => { e.preventDefault(); label.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => label.addEventListener(ev, e => { e.preventDefault(); label.classList.remove('drag'); }));
+  label.addEventListener('drop', e => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    set(f);
+  });
+}
+function banner(el, kind, msg){
+  const b = $(el);
+  b.className = 'banner' + (kind ? ' ' + kind : '');
+  b.textContent = msg;
+  b.classList.toggle('show', !!msg);
+}
+
+/* ---------- payload source toggles ---------- */
+if ($('#payload_source')){
+  $('#payload_source').addEventListener('change', e => {
+    const v = e.target.value;
+    $('#payload_uuid_wrap').hidden = v !== 'uuid';
+    $('#payload_bits_wrap').hidden = v !== 'bits';
+    $('#payload_text').disabled = v !== 'message' && v !== 'text';
+  });
+}
+
+/* ---------- embed ---------- */
+wireDrop('#drop', '#file', '#chosen', f => {
   fileBlob = f;
-  $('#fname').textContent = f.name + '  ·  ' + Math.round(f.size/1024) + ' KB';
   $('#go').disabled = false;
-}
-
-// ---- payload source toggles ----
-$('#payload_source').addEventListener('change', e=>{
-  const v = e.target.value;
-  $('#payload_text_wrap').hidden = v!=='text';
-  $('#payload_uuid_wrap').hidden = v!=='uuid';
-  $('#payload_bits_wrap').hidden = v!=='bits';
 });
-$('#alpha').addEventListener('input', e=> $('#alpha_val').textContent = Number(e.target.value).toFixed(3));
-['#bit_length','#subband','#extra_subbands'].forEach(s=> $(s).addEventListener('change', updateCap));
-function updateCap(){
-  const n = Number($('#bit_length').value);
-  $('#cap_hint').textContent =
-    'A 256×256 image gives 128 singular values per subband. Payloads over one subband need overflow subbands.'
-    + (n>128 ? '  ⚠ '+n+' bits needs at least '+Math.ceil(n/128)+' subbands.' : '');
-}
 
-// ---- submit ----
-$('#form').addEventListener('submit', async e=>{
+$('#form').addEventListener('submit', async e => {
   e.preventDefault();
-  if(!fileBlob) return;
+  if (!fileBlob) return;
   const btn = $('#go'); btn.disabled = true;
   const label = btn.textContent; btn.innerHTML = '<span class="spin"></span>Embedding…';
-  banner('', '');
+  banner('#banner', '', '');
 
   const fd = new FormData();
   fd.append('image', fileBlob);
-  fd.append('alpha', $('#alpha').value);
-  fd.append('bit_length', $('#bit_length').value);
-  fd.append('wavelet', $('#wavelet').value);
-  fd.append('subband', $('#subband').value);
-  fd.append('extra_subbands', $('#extra_subbands').value);
   fd.append('payload_source', $('#payload_source').value);
   fd.append('payload_text', $('#payload_text').value);
   fd.append('payload_uuid', $('#payload_uuid').value);
   fd.append('payload_bits', $('#payload_bits').value);
+  fd.append('bit_length', $('#bit_length').value || '64');
 
   try{
-    const res = await fetch('/api/watermark/embed', {method:'POST', body:fd});
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.detail || ('HTTP '+res.status));
-    render(data);
-    banner('ok', 'Done — PSNR '+fmt(data.quality_metrics.psnr_db)+' dB, BER '+fmt(data.recovery_metrics.ber));
+    const res = await fetch('/api/final-model/embed', {method:'POST', body: fd});
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    renderEmbed(d);
+    const q = d.quality_metrics;
+    banner('#banner', 'ok', 'Done — PSNR ' + fmt(q.psnr_db) + ' dB · SSIM ' + q.ssim.toFixed(4) +
+      ' · reference recovery ' + (d.recovery_metrics.status||'') +
+      ' (BER ' + fmt(d.recovery_metrics.ber) + ')');
   }catch(err){
-    banner('err', err.message);
+    banner('#banner', 'err', err.message);
   }finally{
     btn.disabled = false; btn.textContent = label;
   }
 });
 
-function banner(kind, msg){
-  const b = $('#banner');
-  b.className = 'banner' + (kind ? ' '+kind : '');
-  b.textContent = msg;
-}
-const fmt = v => v==null ? '∞' : (typeof v==='number' ? v.toString() : v);
-
-function render(d){
+function renderEmbed(d){
   $('#empty').hidden = true; $('#output').hidden = false;
-  $('#m_psnr').textContent = d.quality_metrics.psnr_db==null ? '∞' : d.quality_metrics.psnr_db.toFixed(2);
-  $('#m_ssim').textContent = d.quality_metrics.ssim.toFixed(4);
-  $('#m_mse').textContent  = d.quality_metrics.mse.toFixed(3);
+  const rr = d.recovery_metrics;
+  $('#r_id').textContent = d.payload.registry_id != null ? String(d.payload.registry_id) : '—';
+  $('#r_desc').textContent = d.payload.description;
+  $('#r_status').textContent = rr.status;
+  $('#r_text').textContent = d.payload.text || '—';
+  $('#r_fmt').textContent = d.payload.bit_length + ' · ' + d.payload.repetition + ' · ' + d.payload.kind;
+  $('#m_psnr').textContent = fmt(d.quality_metrics.psnr_db);
+  $('#m_ssim').textContent = d.quality_metrics.ssim == null ? '—' : d.quality_metrics.ssim.toFixed(4);
+  $('#m_mse').textContent  = d.quality_metrics.mse == null ? '—' : d.quality_metrics.mse.toFixed(4);
   $('#img_original').src    = d.images.original;
   $('#img_watermarked').src = d.images.watermarked;
   $('#img_residual').src    = d.images.residual_x15;
-  $('#r_ber').textContent = d.recovery_metrics.ber;
-  $('#r_acc').textContent = d.recovery_metrics.bit_accuracy;
-  $('#r_nc').textContent  = d.recovery_metrics.nc;
-  $('#r_src').textContent = d.payload.description;
-  const c = d.config;
-  $('#r_cfg').textContent = `α=${c.alpha}, ${c.bit_length} bit, ${c.wavelet}, ${c.subband_order.join('+')}`;
+  $('#r_decoder').textContent = rr.decoder;
+  $('#r_ber').textContent = fmt(rr.ber);
+  $('#r_acc').textContent = fmt(rr.bit_accuracy);
+  $('#r_nc').textContent  = fmt(rr.nc);
   $('#r_bits').textContent  = d.payload.bit_string;
-  $('#r_rbits').textContent = d.recovery_metrics.recovered_bit_string;
+  $('#r_rbits').textContent = rr.recovered_bit_string;
+  const dl = $('#dl');
+  dl.href = d.download && d.download.data_uri || d.images.watermarked;
+  dl.download = (d.download && d.download.filename) || 'watermarked.png';
+  $('#to-verify').onclick = () => prefillVerify(d);
+}
+
+/* ---------- verify ---------- */
+wireDrop('#vdrop', '#vfile', '#vchosen', f => {
+  vfileBlob = f;
+  $('#vgo').disabled = false;
+});
+
+function prefillVerify(d){
+  location.hash = '#verify';
+  const p = d.payload;
+  if (p && p.bit_length) $('#v_bits').value = p.bit_length;
+  if (p && p.repetition) $('#v_rep').value = p.repetition;
+  if (p && p.kind) $('#v_kind').value = p.kind;
+  if (p && p.text) $('#v_exp_text').value = p.text;
+  if (p && p.bit_string) $('#v_exp_bits').value = p.bit_string;
+  const wm = d.download && d.download.data_uri || (d.images && d.images.watermarked);
+  if (wm) fetch(wm).then(r => r.blob()).then(blob => {
+    vfileBlob = new File([blob], 'watermarked.png', {type: 'image/png'});
+    $('#vchosen').textContent = 'watermarked.png (from the embed just above)';
+    $('#vdrop').classList.add('has');
+    $('#vgo').disabled = false;
+  });
+  scrollTo({top: 0, behavior: 'smooth'});
+}
+
+$('#vform').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!vfileBlob) return;
+  const btn = $('#vgo'); btn.disabled = true;
+  const label = btn.textContent; btn.innerHTML = '<span class="spin"></span>Verifying…';
+  banner('#vbanner', '', '');
+
+  const fd = new FormData();
+  fd.append('image', vfileBlob);
+  fd.append('payload_kind', $('#v_kind').value);
+  fd.append('payload_bit_length', $('#v_bits').value);
+  fd.append('repetition', $('#v_rep').value);
+  if ($('#v_exp_text').value.trim()) fd.append('expected_text', $('#v_exp_text').value.trim());
+  if ($('#v_exp_bits').value.trim()) fd.append('expected_bits', $('#v_exp_bits').value.trim());
+
+  try{
+    const res = await fetch('/api/final-model/extract/blind', {method:'POST', body: fd});
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    renderVerify(d);
+  }catch(err){
+    renderVerify({ error: err.message });
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+  }
+});
+
+function renderVerify(d){
+  $('#vempty').hidden = true; $('#voutput').hidden = false;
+  const conf = $('#vconfirm');
+
+  if (d.error){
+    conf.hidden = true;
+    banner('#vbanner', 'err', d.error);
+    $('#v_id').textContent = '—';
+    $('#v_reg').textContent = '—';
+    $('#v_conf').textContent = '—';
+    $('#v_confmin').textContent = '—';
+    $('#v_model').textContent = '—';
+    $('#v_fb_row').hidden = true;
+    $('#v_status').textContent = 'not verified';
+    $('#v_scoring').hidden = true;
+    $('#v_bits_str').textContent = '';
+    return;
+  }
+
+  if (!d.blind_supported){
+    conf.hidden = true;
+    banner('#vbanner', 'warn', 'No blind decoder for this payload: ' + d.reason);
+    $('#v_id').textContent = '—';
+    $('#v_reg').textContent = 'unsupported';
+    $('#v_conf').textContent = '—';
+    $('#v_confmin').textContent = '—';
+    $('#v_model').textContent = 'none';
+    $('#v_fb_row').hidden = true;
+    $('#v_status').textContent = d.decoding_status;
+    $('#v_scoring').hidden = true;
+    $('#v_bits_str').textContent = '';
+    return;
+  }
+
+  const r = d.recovered || {};
+  const reliable = !!r.text_reliable;
+  const isRegistered = r.registry_id != null;
+  const shown = r.text !== null ? r.text : '—';
+
+  conf.hidden = !reliable;
+  if (reliable){
+    $('#vwho').textContent = (isRegistered ? 'ID ' + r.registry_id + ' · ' : '') + r.text;
+    $('#vwhy').textContent = 'Recovered with confidence ' + fmt4(r.confidence_mean) +
+      ' (majority-vote agreement across the ID repetition)' +
+      (isRegistered ? ' and matched to the local message registry.' : '.');
+  }
+
+  $('#v_id').textContent = isRegistered ? 'ID ' + r.registry_id : shown;
+  $('#v_reg').textContent = reliable
+    ? (isRegistered ? 'matched — ownership message "' + r.text + '"' : shown)
+    : (isRegistered
+        ? 'recovered ID ' + r.registry_id + ' is below the reliable-confidence threshold (' + fmt4(r.confidence_mean) + ')'
+        : 'decode below the reliable-confidence threshold');
+  $('#v_conf').textContent = fmt4(r.confidence_mean);
+  $('#v_confmin').textContent = fmt4(r.confidence_min_bit);
+  $('#v_model').textContent = (d.model || '?') + ' · ' + (d.checkpoint || '');
+  const fb = d.decoder_fallback;
+  $('#v_fb_row').hidden = !fb;
+  if (fb){
+    $('#v_fallback').textContent = fb;
+    banner('#vbanner', 'warn', 'Decoder note: ' + fb);
+  }else{
+    banner('#vbanner', reliable ? 'ok' : 'warn',
+      reliable
+        ? '✓ Watermark detected' + (isRegistered ? ' — ID ' + r.registry_id + ' "' + r.text + '"' : ' — "' + r.text + '"') +
+          ', confidence ' + fmt4(r.confidence_mean)
+        : 'Watermark bits recovered but the ID is below the reliable-confidence threshold (' + fmt4(r.confidence_mean) + ').');
+  }
+
+  $('#v_status').textContent = d.decoding_status;
+  $('#v_bits_str').textContent = r.bit_string || '';
+
+  const sc = d.reference_scoring;
+  const hasSc = sc && sc.ber != null;
+  $('#v_scoring').hidden = !hasSc;
+  if (hasSc){
+    $('#v_ber').textContent = fmt4(sc.ber);
+    $('#v_acc').textContent = fmt4(sc.bit_accuracy);
+    $('#v_tmatch').textContent = d.text_match === null ? '—' : (d.text_match ? 'yes' : 'no');
+    $('#v_char').textContent = d.char_accuracy == null ? '—' : fmt4(d.char_accuracy);
+  }
+}
+
+/* ---------- helpers ---------- */
+const fmt = v => v == null ? '—' : (typeof v === 'number' ? +v.toFixed(4) : v);
+const fmt4 = v => v == null ? '—' : Number(v).toFixed(4);
+
+async function fillOptions(){
+  try{
+    const o = await (await fetch('/api/options')).json();
+    const fill = (sel, vals, def) => {
+      const el = $(sel); if (!el) return;
+      el.innerHTML = '';
+      for (const v of vals){ const op = document.createElement('option'); op.value = v; op.textContent = v; el.appendChild(op); }
+      if (def != null) el.value = def;
+    };
+    fill('#bit_length', (o.bit_lengths||[]).map(String), '64');
+  }catch{}
 }
 
 boot();
+fillOptions();
+route();
 </script>
 </body>
 </html>

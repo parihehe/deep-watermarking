@@ -1,0 +1,11 @@
+{
+  "decoder_class": "WindowedCNNExtractor",
+  "bit_length": 64,
+  "window_size": 15,
+  "image_size": 256,
+  "alpha": 0.02,
+  "wavelet": "haar",
+  "subband": "LL",
+  "input_transform": "per_window_log1p_standardised_inside_bit_window_singular_values",
+  "reliability_threshold": 0.78
+}

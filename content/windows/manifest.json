@@ -1,0 +1,13 @@
+{
+  "config_hash": "757172f5362c",
+  "bit_length": 64,
+  "window_size": 15,
+  "image_size": 256,
+  "alpha": 0.02,
+  "wavelet": "haar",
+  "subband": "LL",
+  "split_mode": "700",
+  "payload_source": "id_registry.encode_id_bits(id) for id in [0,16)",
+  "feature_transform": "per-window log1p -> standardise inside bit_window_singular_values",
+  "embedder": "src.watermark.embed.embed (frozen Phase 6) - unmodified"
+}

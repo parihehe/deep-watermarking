@@ -33,6 +33,7 @@ import numpy as np
 
 from src.app import service
 from src.app.service import ServiceError
+from src.evaluation import decoder_loader
 from src.evaluation.metrics import quality_report, recovery_report
 from src.evaluation.phase17_final import CandidateSpec
 from src.watermark import id_registry
@@ -137,6 +138,30 @@ RELIABLE_TEXT_CONFIDENCE = 0.85
 # adding more messages.
 RELIABLE_REGISTRY_ID_CONFIDENCE = 0.78
 
+# Gate for the SOFT (log-likelihood) registry-ID decode, which is what the blind
+# path now uses whenever the decoder gives per-bit probabilities
+# (``id_registry.decode_id_bits_soft``). This confidence is a posterior
+# probability, not a vote-agreement fraction, so it needs its own - much higher,
+# because posteriors saturate near 1 - threshold, and the two are NOT
+# interchangeable.
+#
+# Calibrated against the windowed decoder on DIV2K test images, embedding all 14
+# usable IDs at the frozen alpha=0.02 operating point. Threshold picked on
+# images 0801-0860 (840 trials) and then confirmed on the untouched held-out
+# images 0861-0900 at three resolutions (1680 further trials, 560 each):
+#
+#   resolution | soft exact-ID | coverage @0.9999 | wrong decodes shown
+#   256x256    |     0.982     |      0.777       |         0
+#   512x512    |     0.984     |      0.807       |         0
+#   800x600    |     0.980     |      0.791       |         0
+#
+# For comparison the previous hard-vote gate (0.78 above) showed 11 wrong
+# decodes across those same 1680 trials at only ~0.58 coverage, so this is a
+# strict improvement in BOTH precision and coverage - not a relaxed bar.
+# As with the hard threshold this is an empirical "no observed errors" cutoff,
+# not a guarantee; re-run the calibration if the codec or decoder changes.
+RELIABLE_REGISTRY_ID_POSTERIOR = 0.9999
+
 _PAYLOAD_SOURCES = ("message", "text", "uuid", "bits", "random")
 
 # ``message`` payloads no longer embed text directly (see
@@ -161,9 +186,7 @@ _PAYLOAD_SOURCES = ("message", "text", "uuid", "bits", "random")
 # larger registry and re-verify the threshold still holds at acceptable
 # precision - do not assume today's clean "0 wrong shown" record continues
 # automatically.
-MESSAGE_REGISTRY = id_registry.MessageRegistry(
-    ["hello", "hi", "owner-2026", "Vestigia", "日本語"]
-)
+MESSAGE_REGISTRY = id_registry.MessageRegistry(["hello", "hi", "owner-2026", "Vestigia", "日本語"])
 
 
 class FinalModelError(ServiceError):
@@ -257,9 +280,47 @@ def reset_extractor_cache() -> None:
     _EXTRACTORS.clear()
 
 
+def _resolve_blind_extractor(model_width: int) -> tuple[object, str, str | None]:
+    """Pick the active blind decoder for a given width.
+
+    Default is the production per-size Phase 8 CNN. ``DECODER_MODE=windowed_cnn``
+    opts into the experimental per-bit decoder when its declared width matches
+    ``model_width``; an unavailable or width-mismatched windowed decoder falls
+    back to the production CNN with a visible ``decoder_fallback`` reason (the
+    app never runs an unrequested network silently).
+    """
+    mode = decoder_loader.default_decoder_mode()
+    if mode != "windowed_cnn":
+        return blind_extractor(model_width), "current", None
+    try:
+        ext = decoder_loader.windowed_decoder()
+    except decoder_loader.DecoderUnavailableError as exc:
+        return (
+            blind_extractor(model_width),
+            "current",
+            (
+                f"DECODER_MODE=windowed_cnn requested but unavailable ({exc}); "
+                f"used the production blind CNN"
+            ),
+        )
+    declared = int(getattr(ext.config, "bit_length", -1))
+    if declared != model_width:
+        return (
+            blind_extractor(model_width),
+            "current",
+            (
+                f"DECODER_MODE=windowed_cnn requested for a {model_width}-bit payload "
+                f"but the windowed decoder declares {declared} bits; used the "
+                f"production blind CNN"
+            ),
+        )
+    return ext, "windowed_cnn", None
+
+
 # ---------------------------------------------------------------------------
 # Requests
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class FinalEmbedRequest:
@@ -294,6 +355,7 @@ class ExtractRequest:
 # Info
 # ---------------------------------------------------------------------------
 
+
 def final_model_info() -> dict:
     return {
         "model": "phase17_final",
@@ -325,12 +387,20 @@ def final_model_info() -> dict:
                 "unsupported_sizes": [s for s in SUPPORTED_PAYLOAD_BITS if s > BLIND_MAX_BITS],
             },
         },
+        "decoder_mode": decoder_loader.default_decoder_mode(),
+        "windowed_cnn": {
+            "decoder": "experimental per-bit windowed 1D-CNN (DIV2K-trained, opt-in)",
+            "checkpoint": str(decoder_loader.WINDOWED_CHECKPOINT.relative_to(PROJECT_ROOT)),
+            "checkpoint_available": decoder_loader.WINDOWED_CHECKPOINT.is_file(),
+            "requires_original_image": False,
+        },
     }
 
 
 # ---------------------------------------------------------------------------
 # Embed with the final model
 # ---------------------------------------------------------------------------
+
 
 def _final_config(bit_length: int) -> EmbedConfig:
     return EmbedConfig(
@@ -424,13 +494,23 @@ def run_final_embed(image_bytes: bytes, req: FinalEmbedRequest) -> dict:
         recovered_id, _, _ = id_registry.decode_id_bits(recovered)
         recovered_text = MESSAGE_REGISTRY.message_for(recovered_id) or ""
         char_acc = service.character_accuracy(message_text, recovered_text)
-        status = ("recovered" if recovered_text == message_text
-                  else "partial" if char_acc >= 0.5 else "failed")
+        status = (
+            "recovered"
+            if recovered_text == message_text
+            else "partial"
+            if char_acc >= 0.5
+            else "failed"
+        )
     else:
         recovered_text = None
         char_acc = None
-        status = ("recovered" if recovery["ber"] == 0.0
-                  else "partial" if recovery["bit_accuracy"] >= 0.75 else "failed")
+        status = (
+            "recovered"
+            if recovery["ber"] == 0.0
+            else "partial"
+            if recovery["bit_accuracy"] >= 0.75
+            else "failed"
+        )
 
     watermarked_uri = service.encode_png_data_uri(watermarked)
     return {
@@ -497,6 +577,7 @@ def run_final_embed(image_bytes: bytes, req: FinalEmbedRequest) -> dict:
 # Extraction - shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _parse_expected_bits(raw: str, n: int) -> list[int]:
     cleaned = (raw or "").strip().replace(" ", "")
     if not cleaned or any(c not in "01" for c in cleaned):
@@ -540,6 +621,7 @@ def _score(reference: list[int], recovered: list[int]) -> dict:
 # Blind extraction - watermarked image ONLY
 # ---------------------------------------------------------------------------
 
+
 def _blind_unsupported(image: np.ndarray, requested_bits: int, reason: str) -> dict:
     """Structured 'this payload width has no blind decoder' response.
 
@@ -582,9 +664,7 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
     image = _decode(watermarked_bytes)
 
     requested = (
-        int(req.payload_bit_length)
-        if req.payload_bit_length is not None
-        else BLIND_BIT_LENGTH
+        int(req.payload_bit_length) if req.payload_bit_length is not None else BLIND_BIT_LENGTH
     )
     if requested <= 0:
         raise FinalModelError("payload_bit_length must be a positive integer")
@@ -596,7 +676,8 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
     is_message = req.repetition is not None
     if not is_message and requested not in SUPPORTED_PAYLOAD_BITS:
         return _blind_unsupported(
-            image, requested,
+            image,
+            requested,
             f"{requested} is not a supported payload size; allowed: "
             f"{list(SUPPORTED_PAYLOAD_BITS)}.",
         )
@@ -608,7 +689,8 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
     candidates = [s for s in BLIND_TRAINABLE_SIZES if s >= requested]
     if not candidates:
         return _blind_unsupported(
-            image, requested,
+            image,
+            requested,
             f"no blind decoder is available for a {requested}-bit payload. Blind "
             f"decoders exist for {list(BLIND_TRAINABLE_SIZES)}-bit payloads (the "
             f"single-level LL sub-band holds 128 bits); recover wider payloads with "
@@ -625,7 +707,9 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
             f"repetition {reps} does not evenly divide payload_bit_length {requested}"
         )
 
-    extractor = blind_extractor(model_width)  # raises CheckpointError -> HTTP 503
+    extractor, decoder_mode, decoder_fallback = _resolve_blind_extractor(model_width)
+    # raises CheckpointError -> HTTP 503 when neither the requested decoder nor
+    # the production fallback can serve this width
     declared = int(getattr(extractor.config, "bit_length", model_width))
 
     probs_full = np.asarray(extractor.extract_proba(image), dtype=float)
@@ -640,20 +724,32 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
     bits = (probs > 0.5).astype(int).tolist()
     n = len(bits)
     is_registry_id = is_message and req.payload_kind == "registry_id"
+    recovered_registry_id: int | None = None
 
     if is_registry_id:
-        # confidence is the majority-vote agreement over the ID bits, not the
-        # raw pre-vote CNN margin - it's the number that actually reflects how
-        # decisive the repetition code's decode was.
-        recovered_id, confidence, min_bit_confidence = id_registry.decode_id_bits(
-            bits[: id_registry.ENCODED_BITS]
+        # Soft-decision decode: combine the 15 copies of each ID bit by summing
+        # log-likelihood ratios over the decoder's per-bit probabilities rather
+        # than counting hard votes, so a barely-past-0.5 copy no longer counts
+        # the same as a confident one. Measured on held-out DIV2K: exact ID
+        # recovery 0.96 -> 0.98 with strictly better confidence calibration.
+        # Confidence is the posterior that each voted ID bit is right.
+        recovered_id, confidence, min_bit_confidence = id_registry.decode_id_bits_soft(
+            probs[: id_registry.ENCODED_BITS]
         )
+        recovered_registry_id = int(recovered_id)
+        # The hard majority vote is still reported for diagnostics/comparison.
+        hard_id, hard_confidence, _ = id_registry.decode_id_bits(bits[: id_registry.ENCODED_BITS])
     else:
         confidence = float(np.mean(np.abs(probs - 0.5)) * 2.0)
         min_bit_confidence = float(np.min(np.abs(probs - 0.5)) * 2.0)
+        hard_id = hard_confidence = None
 
     h, w = image.shape[:2]
-    resized = (h, w) != (extractor.image_size, extractor.image_size)
+    # The windowed decoder reads the payload at the image's native resolution;
+    # the production CNN rescales to its trained input size first.
+    rescales = getattr(extractor, "resizes_input", True)
+    resized = rescales and (h, w) != (extractor.image_size, extractor.image_size)
+    model_input_size = extractor.image_size if rescales else max(h, w)
 
     scored = None
     reliable = False
@@ -666,7 +762,9 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
         decoded_text = MESSAGE_REGISTRY.message_for(recovered_id)
     else:
         decoded_text = _decode_payload_message(bits, payload_bits=n, repetition=reps)
-    reliable_threshold = RELIABLE_REGISTRY_ID_CONFIDENCE if is_registry_id else RELIABLE_TEXT_CONFIDENCE
+    reliable_threshold = (
+        RELIABLE_REGISTRY_ID_POSTERIOR if is_registry_id else RELIABLE_TEXT_CONFIDENCE
+    )
     if not reliable:
         reliable = decoded_text is not None and confidence >= reliable_threshold
 
@@ -696,12 +794,20 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
             f"(confidence {round(confidence, 3)})"
         )
 
-    ckpt_path = _checkpoint_for(model_width)
+    if decoder_mode == "windowed_cnn":
+        ckpt_name = decoder_loader.WINDOWED_CHECKPOINT.name
+        model_name = f"windowed_cnn_{declared}bit"
+    else:
+        ckpt_path = _checkpoint_for(model_width)
+        ckpt_name = ckpt_path.name
+        model_name = f"blind_cnn_{model_width}bit"
     return {
         "extraction": "blind",
-        "model": f"blind_cnn_{model_width}bit",
-        "checkpoint": ckpt_path.name,
-        "checkpoint_bit_length": declared,      # the model's declared/validated width
+        "model": model_name,
+        "decoder": decoder_mode,
+        "decoder_fallback": decoder_fallback,
+        "checkpoint": ckpt_name,
+        "checkpoint_bit_length": declared,  # the model's declared/validated width
         "selected_for_payload_bits": requested,
         "requires_original_image": False,
         "blind_supported": True,
@@ -717,19 +823,29 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
                 else "[1-byte length][UTF-8 body] x repetition, majority-voted"
             ),
         },
-        "image_info": {"width": int(w), "height": int(h),
-                       "resized_to_model_input": resized,
-                       "model_input_size": int(extractor.image_size)},
+        "image_info": {
+            "width": int(w),
+            "height": int(h),
+            "resized_to_model_input": resized,
+            "model_input_size": int(model_input_size),
+            "decoder_trained_at": int(extractor.image_size),
+        },
         "recovered": {
             "bit_length": n,
             "bit_string": "".join(map(str, bits)),
-            "confidence_mean": _round(confidence, 4),
-            "confidence_min_bit": _round(min_bit_confidence, 4),
+            "confidence_mean": _round(confidence, 6),
+            "confidence_min_bit": _round(min_bit_confidence, 6),
+            "confidence_kind": ("soft_posterior" if is_registry_id else "mean_bit_margin"),
+            "confidence_threshold": reliable_threshold,
+            "registry_id": recovered_registry_id,
+            # diagnostics: what the previous hard majority vote would have said
+            "registry_id_hard_vote": hard_id,
+            "hard_vote_agreement": _round(hard_confidence, 4),
             "text": (decoded_text if reliable else None),
             "text_reliable": bool(reliable),
         },
-        "reference_scoring": scored,          # None unless expected_bits supplied
-        "text_match": text_match,             # None unless expected_text supplied
+        "reference_scoring": scored,  # None unless expected_bits supplied
+        "text_match": text_match,  # None unless expected_text supplied
         "char_accuracy": char_accuracy,
         "decoding_status": decoding_status,
     }
@@ -738,6 +854,7 @@ def run_blind_extract(watermarked_bytes: bytes, req: ExtractRequest) -> dict:
 # ---------------------------------------------------------------------------
 # Non-blind extraction - watermarked + original both required
 # ---------------------------------------------------------------------------
+
 
 def run_nonblind_extract(
     watermarked_bytes: bytes, original_bytes: bytes, req: ExtractRequest
@@ -791,8 +908,12 @@ def run_nonblind_extract(
         "extraction": "non_blind",
         "decoder": "frozen DWT-SVD reference decoder",
         "requires_original_image": True,
-        "config": {"alpha": config.alpha, "bit_length": config.bit_length,
-                   "wavelet": config.wavelet, "subband": FINAL_SUBBAND},
+        "config": {
+            "alpha": config.alpha,
+            "bit_length": config.bit_length,
+            "wavelet": config.wavelet,
+            "subband": FINAL_SUBBAND,
+        },
         "recovered": {
             "bit_length": n,
             "bit_string": "".join(map(str, recovered)),
