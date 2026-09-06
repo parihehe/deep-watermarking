@@ -12,18 +12,23 @@ src/deep_watermarking.egg-info/top_level.txt
 src/evaluation/__init__.py
 src/evaluation/attacks.py
 src/evaluation/blind_extract.py
+src/evaluation/decoder_loader.py
 src/evaluation/metrics.py
 src/evaluation/phase10_robustness.py
 src/evaluation/phase11_adaptive.py
 src/evaluation/phase12_capacity.py
 src/evaluation/phase17_final.py
 src/evaluation/phase9_validation.py
+src/evaluation/windowed_extract.py
 src/models/__init__.py
 src/models/cnn_extractor.py
+src/models/windowed_cnn.py
 src/training/__init__.py
 src/training/dataset.py
 src/training/train_extractor.py
+src/training/train_windowed_cnn.py
 src/training/watermark_dataset.py
+src/training/windowed_dataset.py
 src/utils/__init__.py
 src/utils/dataset_pipeline.py
 src/watermark/__init__.py
@@ -41,6 +46,7 @@ tests/test_attacks.py
 tests/test_capacity_embed.py
 tests/test_cnn_extractor.py
 tests/test_dataset_pipeline.py
+tests/test_decoder_loader.py
 tests/test_dwt.py
 tests/test_embed.py
 tests/test_environment_contract.py
@@ -52,3 +58,4 @@ tests/test_phase12_capacity.py
 tests/test_phase9_validation.py
 tests/test_svd.py
 tests/test_watermark_generator.py
+tests/test_windowed_cnn.py
