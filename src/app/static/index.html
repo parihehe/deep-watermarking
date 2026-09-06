@@ -3,271 +3,1884 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Vestigia — embed invisible DWT-SVD ownership watermarks and verify them later with a blind decoder; the original image is never needed to check a watermark." />
-<title>Vestigia — invisible image watermarking &amp; verification</title>
+<meta name="description" content="Vestigia — DWT-SVD Invisible Watermarking. Embed invisible ownership marks into images and verify them blindly without the original image." />
+<title>Vestigia — DWT-SVD Invisible Watermarking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
-  :root{
-    --bg:#0b0e13; --surface:#11151c; --surface-2:#161b24; --surface-3:#1c2230;
-    --line:#202833; --line-2:#2e3a4c;
-    --text:#e8edf3; --text-2:#a7b2c2; --text-3:#7e8ba0;
-    --accent:#5b9dff; --accent-ink:#06101f;
-    --ok:#3ad1a4; --ok-soft:rgba(58,209,164,.10); --ok-line:rgba(58,209,164,.45);
-    --warn:#ffb454; --warn-soft:rgba(255,180,84,.10); --warn-line:rgba(255,180,84,.45);
-    --err:#ff6b6b; --err-soft:rgba(255,107,107,.10); --err-line:rgba(255,107,107,.45);
-    --r-sm:6px; --r-md:10px; --r-lg:14px;
-    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  }
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);-webkit-font-smoothing:antialiased}
-  a{color:var(--accent)}
-  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
-  .skip{position:absolute;left:-999px;top:0;background:var(--surface-3);color:var(--text);padding:10px 14px;z-index:50}
-  .skip:focus{left:16px;top:16px}
-  .wrap{max-width:1240px;margin:0 auto;padding:0 28px}
-  .mono{font-family:var(--mono)}
-  .muted{color:var(--text-2)}
-  .dim{color:var(--text-3)}
-  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-
-  /* ---------- top bar ---------- */
-  .topbar{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-  .topbar .wrap{display:flex;align-items:center;gap:22px;height:58px}
-  .brand{display:flex;align-items:baseline;gap:10px;text-decoration:none;color:var(--text)}
-  .brand b{font-size:17px;letter-spacing:.3px;font-weight:650}
-  .brand span{font-family:var(--mono);font-size:11px;color:var(--text-3);letter-spacing:.4px}
-  .nav{display:flex;gap:4px;margin-left:auto}
-  .nav a{color:var(--text-2);text-decoration:none;font-size:14px;border-radius:var(--r-sm);padding:8px 12px;border:1px solid transparent}
-  .nav a:hover{color:var(--text);background:var(--surface-2)}
-  .nav a.active{color:var(--text);background:var(--surface-2);border-color:var(--line)}
-  .status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--text-2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;white-space:nowrap}
-  .status .dot{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
-  .status.on .dot{background:var(--ok)}
-  @media (max-width:860px){
-    .status .p2{display:none}
-    .topbar .wrap{gap:12px;padding:0 16px}
-    .brand span{display:none}
+  :root {
+    --bg: #07090e;
+    --bg-surface: #0b0f16;
+    --surface-1: #0f1520;
+    --surface-2: #141c2b;
+    --surface-3: #1a2538;
+    --surface-card: #0f1521;
+    --surface-hover: #192233;
+    --border-subtle: #192231;
+    --border-card: #212c3d;
+    --border-bright: #2d3b50;
+    --border-focus: #3b82f6;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #38bdf8;
+    --accent-blue: #3b82f6;
+    --accent-indigo: #6366f1;
+    --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #60a5fa 100%);
+    --accent-glow: rgba(56, 189, 248, 0.16);
+    --accent-glow-strong: rgba(56, 189, 248, 0.35);
+    --ok: #10b981;
+    --ok-soft: rgba(16, 185, 129, 0.10);
+    --ok-line: rgba(16, 185, 129, 0.40);
+    --warn: #f59e0b;
+    --warn-soft: rgba(245, 158, 11, 0.10);
+    --warn-line: rgba(245, 158, 11, 0.40);
+    --err: #ef4444;
+    --err-soft: rgba(239, 68, 68, 0.10);
+    --err-line: rgba(239, 68, 68, 0.40);
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 24px;
+    --r-pill: 9999px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --hand: 'Caveat', cursive, sans-serif;
   }
 
-  /* ---------- hero / landing ---------- */
-  .hero{position:relative;padding:84px 0 52px;overflow:hidden}
-  .hero::before{content:"";position:absolute;inset:-140px auto auto -80px;width:560px;height:560px;border-radius:50%;
-    background:radial-gradient(circle at 35% 35%,rgba(91,157,255,.16),rgba(58,209,164,.05) 55%,transparent 72%);
-    pointer-events:none}
-  .hero::after{content:"";position:absolute;inset:auto -120px -200px auto;width:520px;height:520px;border-radius:50%;
-    background:radial-gradient(circle at 60% 40%,rgba(58,209,164,.10),rgba(91,157,255,.04) 58%,transparent 75%);
-    pointer-events:none}
-  .hero .wrap{position:relative}
-  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-3);margin:0 0 16px}
-  .hero h1{font-size:44px;line-height:1.08;letter-spacing:-1.4px;font-weight:600;margin:0 0 16px;max-width:760px}
-  .hero h1 em{font-style:normal;color:var(--accent)}
-  .hero p.lede{font-size:17px;max-width:600px;color:var(--text-2);margin:0 0 30px}
-  .ctas{display:flex;flex-wrap:wrap;gap:14px}
-  .cta{display:inline-flex;align-items:center;gap:10px;font:600 16px/1 var(--font);border-radius:999px;padding:16px 26px;text-decoration:none;cursor:pointer;border:1px solid transparent}
-  .cta.primary{background:var(--text);color:#0b0e13}
-  .cta.primary:hover{background:#ffffff}
-  .cta.ghost{background:transparent;color:var(--text);border-color:var(--line-2)}
-  .cta.ghost:hover{border-color:var(--accent);color:var(--accent)}
-  .cta .k{font-family:var(--mono);font-size:11px;opacity:.65;letter-spacing:.5px}
-  .spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0;margin:54px 0 0;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
-  .spec>div{padding:18px 20px;border-right:1px solid var(--line)}
-  .spec>div:last-child{border-right:0}
-  .spec dt{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-3);margin-bottom:8px}
-  .spec dd{margin:0;font-size:14px;color:var(--text)}
-  .spec dd small{display:block;color:var(--text-2);font-size:12.5px;margin-top:3px}
-  @media (max-width:640px){
-    .hero{padding-top:52px}
-    .hero h1{font-size:32px;letter-spacing:-.8px}
-    .spec>div{border-right:0;border-bottom:1px solid var(--line)}
-    .spec>div:last-child{border-bottom:0}
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font: 400 15px/1.6 var(--font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+  a { color: var(--accent); text-decoration: none; transition: all .15s ease; }
+  a:hover { color: #60a5fa; }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--text-secondary); }
+  .dim { color: var(--text-muted); }
+  .skip { position: absolute; left: -999px; top: 0; background: var(--surface-3); color: #fff; padding: 10px 16px; z-index: 999; border-radius: var(--r-sm); }
+  .skip:focus { left: 16px; top: 16px; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+
+  /* Ambient background glows */
+  .bg-glow-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .bg-glow-1 {
+    position: absolute;
+    top: -160px;
+    left: 20%;
+    width: 680px;
+    height: 680px;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, rgba(59, 130, 246, 0.04) 40%, transparent 70%);
+    filter: blur(80px);
+    border-radius: 50%;
+  }
+  .bg-glow-2 {
+    position: absolute;
+    top: 400px;
+    right: -100px;
+    width: 720px;
+    height: 720px;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, rgba(56, 189, 248, 0.03) 45%, transparent 70%);
+    filter: blur(90px);
+    border-radius: 50%;
+  }
+  .bg-glow-3 {
+    position: absolute;
+    bottom: -200px;
+    left: 10%;
+    width: 800px;
+    height: 800px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.07) 0%, rgba(16, 185, 129, 0.03) 50%, transparent 70%);
+    filter: blur(100px);
+    border-radius: 50%;
   }
 
-  .steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:34px;margin:40px 0 64px;padding:34px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  .step .n{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:1px}
-  .step h2{font-size:16.5px;font-weight:600;margin:10px 0 8px;letter-spacing:-.2px}
-  .step p{margin:0;color:var(--text-2);font-size:14px}
-  @media (max-width:860px){.steps{grid-template-columns:1fr;gap:24px}}
-
-  /* ---------- shared panels ---------- */
-  section.panel{display:none;padding:44px 0 72px}
-  section.panel.on{display:block}
-  .panel-head{margin-bottom:22px}
-  .panel-head h1{font-size:24px;letter-spacing:-.5px;font-weight:600;margin:0 0 6px}
-  .panel-head p{margin:0;color:var(--text-2);font-size:14.5px;max-width:720px}
-  .cols{display:grid;grid-template-columns:420px 1fr;gap:24px;align-items:start}
-  @media (max-width:980px){.cols{grid-template-columns:1fr}}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:22px}
-  .card h2{font-family:var(--mono);font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-3);margin:0 0 16px;font-weight:600}
-
-  /* ---------- forms ---------- */
-  label.field{display:block;margin:14px 0 0}
-  label.field:first-child{margin-top:0}
-  label.field>span{display:block;font-size:13px;color:var(--text-2);margin-bottom:6px}
-  label.field>span b{color:var(--text);font-weight:600}
-  input[type=text],input[type=number],select,textarea{
-    width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--text);
-    border-radius:var(--r-sm);padding:10px 12px;font:inherit}
-  input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
-  ::placeholder{color:#7e8ba0;opacity:1}
-  textarea{resize:vertical;min-height:58px;font-family:var(--mono);font-size:13.5px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media (max-width:520px){.row{grid-template-columns:1fr}}
-  .hint{font-size:12.5px;color:var(--text-3);margin-top:6px;line-height:1.5}
-  .fixed{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;font-family:var(--mono);font-size:13px;color:var(--text-2)}
-  .fixed b{color:var(--text);font-weight:600}
-  button.btn{border:0;border-radius:var(--r-sm);font:600 15px/1 var(--font);cursor:pointer;padding:13px 18px;color:var(--accent-ink);background:var(--accent)}
-  button.btn:hover{background:#6faeff}
-  button.btn:disabled{opacity:.55;cursor:not-allowed}
-  button.btn.block{width:100%;margin-top:18px}
-  button.quiet{background:transparent;border:1px solid var(--line-2);color:var(--text-2);border-radius:var(--r-sm);font:inherit;padding:8px 12px;cursor:pointer}
-  button.quiet:hover{color:var(--text);border-color:var(--accent)}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--accent-ink);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:8px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @media (prefers-reduced-motion:reduce){
-    html{scroll-behavior:auto}
-    .spin{animation:none}
-    *{transition:none!important}
+  /* ---------- Topbar / Navbar ---------- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(7, 9, 14, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .topbar .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 68px;
+  }
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .brand-logo svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.45));
+  }
+  .brand-text {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .brand-title {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: #fff;
+  }
+  .brand-sub {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.2px;
   }
 
-  /* ---------- drop zones ---------- */
-  label.drop{display:block;border:1.5px dashed var(--line-2);border-radius:var(--r-md);padding:26px 20px;text-align:center;cursor:pointer;background:var(--surface-2);transition:border-color .15s}
-  label.drop:hover{border-color:var(--line-2)}
-  label.drop.drag{border-color:var(--accent)}
-  label.drop strong{display:block;font-weight:600;margin-bottom:4px}
-  label.drop span{font-size:12.5px;color:var(--text-3)}
-  label.drop .chosen{font-family:var(--mono);font-size:12.5px;color:var(--accent);margin-top:8px;display:none;word-break:break-all}
-  label.drop.has .chosen{display:block}
+  .nav-menu {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .nav-item {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: var(--r-pill);
+    transition: all .15s ease;
+    position: relative;
+  }
+  .nav-item:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .nav-item.active {
+    color: #fff;
+    font-weight: 600;
+  }
+  .nav-item.active::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 18px;
+    right: 18px;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    border-radius: 2px;
+  }
 
-  /* ---------- banners / status ---------- */
-  .banner{border-radius:var(--r-md);padding:12px 14px;font-size:13.5px;margin-bottom:16px;display:none}
-  .banner.show{display:block}
-  .banner.ok{background:var(--ok-soft);border:1px solid var(--ok-line);color:var(--text)}
-  .banner.warn{background:var(--warn-soft);border:1px solid var(--warn-line);color:var(--text)}
-  .banner.err{background:var(--err-soft);border:1px solid var(--err-line);color:var(--text)}
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: rgba(15, 21, 33, 0.85);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-pill);
+    padding: 6px 16px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all .2s;
+  }
+  .status-pill.on .status-dot {
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+  }
 
-  /* ---------- metrics / images ---------- */
-  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .metric{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);padding:14px}
-  .metric .k{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-3)}
-  .metric .v{font-size:21px;font-weight:650;margin-top:4px;letter-spacing:-.3px}
-  .metric .u{font-size:11.5px;color:var(--text-3)}
-  .metric.sub .v{font-size:16px;font-weight:600}
-  .images{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
-  @media (max-width:920px){.metrics{grid-template-columns:1fr 1fr}.images{grid-template-columns:1fr}}
-  figure{margin:0}
-  figure img{width:100%;border-radius:var(--r-md);border:1px solid var(--line);background:#000;display:block}
-  figcaption{font-size:12px;color:var(--text-3);margin-top:6px;text-align:center}
+  @media (max-width: 992px) {
+    .brand-sub { display: none; }
+    .status-pill { font-size: 11px; padding: 5px 12px; }
+  }
+  @media (max-width: 768px) {
+    .nav-menu { display: none; }
+    .status-pill { display: none; }
+  }
 
-  /* ---------- results ---------- */
-  .block{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
-  .block h3{font-family:var(--mono);font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-3);margin:0 0 12px;font-weight:600}
-  table{width:100%;border-collapse:collapse;font-size:13.5px}
-  td{padding:6px 0;border-bottom:1px solid var(--line)}
-  tr:last-child td{border-bottom:0}
-  td:first-child{color:var(--text-2)}
-  td:last-child{text-align:right;font-family:var(--mono);color:var(--text);word-break:break-all}
-  .bits{font-family:var(--mono);font-size:11.5px;word-break:break-all;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--text-2);max-height:110px;overflow:auto;line-height:1.7}
-  .kv{display:flex;gap:14px;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
-  .kv:last-child{border-bottom:0}
-  .kv .k{color:var(--text-2)}
-  .kv .v{font-family:var(--mono);text-align:right;word-break:break-all}
-  .kv .v.big{font-size:19px;font-weight:650;color:var(--accent);letter-spacing:-.3px}
-  .card .empty{color:var(--text-3);font-size:14px;padding:6px 0}
-  .idbadge{font-family:var(--mono);font-size:30px;font-weight:650;letter-spacing:1px;color:var(--accent);line-height:1.2}
-  .confirm{border:1px solid var(--ok-line);background:var(--ok-soft);border-radius:var(--r-md);padding:16px}
-  .confirm .who{font-size:16px;font-weight:600;margin:6px 0 0}
-  .confirm .why{color:var(--text-2);font-size:13.5px;margin-top:4px}
-  details{margin-top:16px;border:1px solid var(--line);border-radius:var(--r-md)}
-  summary{cursor:pointer;color:var(--text-2);font-size:13.5px;padding:12px 14px;list-style:none}
-  summary::-webkit-details-marker{display:none}
-  summary::before{content:"▸ ";color:var(--accent);font-size:11px}
-  details[open] summary::before{content:"▾ "}
-  details .inner{padding:0 14px 14px}
-  .download{margin-top:16px}
-  .chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--text-2)}
-  .chip.on{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
-  .chip.off{color:var(--warn);border-color:var(--warn-line);background:var(--warn-soft)}
+  /* ---------- Panels (Home, Embed, Verify) ---------- */
+  section.panel {
+    display: none;
+    position: relative;
+    z-index: 1;
+  }
+  section.panel.on {
+    display: block;
+    animation: fadeIn .25s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
-  footer{border-top:1px solid var(--line);padding:22px 0 34px;color:var(--text-3);font-size:12.5px}
-  footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  /* ---------- Hero Section ---------- */
+  .hero-section {
+    padding: 72px 0 60px;
+    position: relative;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 48px;
+    align-items: center;
+  }
+
+  .hero-left {
+    max-width: 600px;
+  }
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hero-eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .hero-title {
+    font-size: clamp(40px, 5.2vw, 68px);
+    line-height: 1.05;
+    letter-spacing: -2px;
+    font-weight: 800;
+    margin: 0 0 24px;
+    color: #ffffff;
+  }
+  .hero-title .text-accent {
+    background: linear-gradient(135deg, #38bdf8 10%, #60a5fa 90%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+  }
+
+  .hero-desc {
+    font-size: 16.5px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin: 0 0 36px;
+    max-width: 540px;
+  }
+
+  .hero-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 44px;
+  }
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 28px;
+    border-radius: var(--r-pill);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 1px solid transparent;
+    text-decoration: none;
+    user-select: none;
+  }
+  .cta-btn:hover {
+    transform: translateY(-2px);
+  }
+  .cta-btn:active {
+    transform: translateY(0);
+  }
+  .cta-btn.primary {
+    background: #ffffff;
+    color: #07090e;
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
+  }
+  .cta-btn.primary:hover {
+    background: #f8fafc;
+    box-shadow: 0 6px 28px rgba(255, 255, 255, 0.25);
+    color: #000;
+  }
+  .cta-btn.primary .badge-tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    background: #e2e8f0;
+    color: #0f172a;
+    padding: 3px 8px;
+    border-radius: var(--r-pill);
+  }
+
+  .cta-btn.secondary {
+    background: rgba(19, 27, 41, 0.85);
+    color: var(--text-primary);
+    border: 1px solid var(--border-bright);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  .cta-btn.secondary:hover {
+    background: rgba(26, 37, 56, 0.95);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 20px var(--accent-glow);
+  }
+  .cta-btn.secondary .badge-tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: var(--r-pill);
+  }
+  .cta-btn svg.arrow {
+    width: 16px;
+    height: 16px;
+    transition: transform .2s ease;
+  }
+  .cta-btn:hover svg.arrow {
+    transform: translateX(3px);
+  }
+
+  /* Micro feature badges under CTAs */
+  .hero-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding-top: 10px;
+  }
+  .feature-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .feature-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .feature-info {
+    display: flex;
+    flex-direction: column;
+  }
+  .feature-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
+  }
+  .feature-sub {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  /* Hero Right Side Visualization */
+  .hero-right {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .hero-visual-container {
+    position: relative;
+    width: 100%;
+    max-width: 580px;
+    border-radius: var(--r-lg);
+    background: radial-gradient(circle at center, rgba(14, 21, 33, 0.8) 0%, rgba(7, 9, 14, 0.95) 100%);
+    border: 1px solid var(--border-card);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 40px rgba(56, 189, 248, 0.08);
+    padding: 16px;
+    overflow: hidden;
+  }
+  .hero-visual-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: var(--r-md);
+    transition: transform .3s ease;
+  }
+  .hero-visual-container:hover .hero-visual-img {
+    transform: scale(1.01);
+  }
+  .hero-cursive-note {
+    font-family: var(--hand);
+    font-size: 26px;
+    color: #60a5fa;
+    text-shadow: 0 0 15px rgba(96, 165, 250, 0.6);
+    transform: rotate(-4deg);
+    margin-top: 14px;
+    align-self: flex-end;
+    margin-right: 32px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ---------- Section 3: Capability Strip ---------- */
+  .capability-strip {
+    margin: 40px 0 80px;
+  }
+  .capability-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-lg);
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+  .cap-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 8px 12px;
+    border-right: 1px solid var(--border-subtle);
+  }
+  .cap-card:last-child {
+    border-right: none;
+  }
+  .cap-icon-box {
+    width: 38px;
+    height: 38px;
+    border-radius: var(--r-md);
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .cap-content {
+    display: flex;
+    flex-direction: column;
+  }
+  .cap-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .cap-value {
+    font-size: 16.5px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.3;
+  }
+  .cap-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  @media (max-width: 992px) {
+    .capability-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .cap-card:nth-child(2) { border-right: none; }
+    .cap-card { padding: 12px 6px; }
+  }
+  @media (max-width: 600px) {
+    .capability-grid {
+      grid-template-columns: 1fr;
+    }
+    .cap-card { border-right: none; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px; }
+    .cap-card:last-child { border-bottom: none; }
+  }
+
+  /* ---------- Section 4: How It Works ---------- */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 36px;
+  }
+  .section-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: block;
+  }
+  .section-title {
+    font-size: clamp(26px, 3.2vw, 36px);
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    margin: 0 0 8px;
+    color: #fff;
+  }
+  .section-sub {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 640px;
+  }
+  .section-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border-card);
+    background: var(--surface-1);
+    transition: all .2s;
+  }
+  .section-action-btn:hover {
+    color: #fff;
+    border-color: var(--accent);
+    background: var(--surface-2);
+  }
+
+  .steps-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 72px;
+  }
+  .step-connector {
+    color: var(--border-bright);
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-box {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-lg);
+    padding: 30px 26px;
+    position: relative;
+    transition: all .2s ease;
+    display: flex;
+    flex-direction: column;
+    min-height: 250px;
+  }
+  .step-box:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  }
+  .step-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .step-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .step-badge.blue { background: #0284c7; box-shadow: 0 0 12px rgba(2, 132, 199, 0.4); }
+  .step-badge.purple { background: #7c3aed; box-shadow: 0 0 12px rgba(124, 58, 237, 0.4); }
+  .step-badge.teal { background: #0d9488; box-shadow: 0 0 12px rgba(13, 148, 136, 0.4); }
+
+  .step-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+  }
+  .step-box:hover .step-icon {
+    color: var(--accent);
+  }
+  .step-box h3 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 10px;
+  }
+  .step-box p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin: 0 0 20px;
+    flex-grow: 1;
+  }
+  .step-pill-tag {
+    align-self: flex-start;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+  }
+  .step-pill-tag.blue { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+  .step-pill-tag.purple { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+  .step-pill-tag.teal { background: rgba(20, 184, 166, 0.12); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.3); }
+
+  @media (max-width: 860px) {
+    .steps-row {
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    .step-connector {
+      transform: rotate(90deg);
+      margin: -6px 0;
+    }
+  }
+
+  /* ---------- Section 5: Technical Pipeline ---------- */
+  .pipeline-section {
+    margin-bottom: 80px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-xl);
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .pipeline-section::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; width: 400px; height: 100%;
+    background: radial-gradient(circle at 100% 50%, rgba(56, 189, 248, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .pipeline-track {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 30px;
+  }
+  .pipe-node {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-md);
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    min-width: 140px;
+    transition: all .2s ease;
+  }
+  .pipe-node:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px var(--accent-glow);
+  }
+  .pipe-node-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  .pipe-node-desc {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+  .pipe-arrow {
+    color: var(--accent);
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0 4px;
+    opacity: 0.7;
+  }
+
+  /* ---------- Section 6: Key Results / Metrics ---------- */
+  .results-section {
+    margin-bottom: 80px;
+  }
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 14px;
+  }
+  .result-stat-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-lg);
+    padding: 24px 18px;
+    text-align: left;
+    transition: all .2s ease;
+  }
+  .result-stat-card:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-2px);
+  }
+  .result-stat-val {
+    font-size: clamp(24px, 2.4vw, 30px);
+    font-weight: 800;
+    color: #38bdf8;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  .result-stat-label {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  @media (max-width: 1100px) {
+    .results-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .results-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ---------- Section 7: Use Cases ---------- */
+  .usecases-section {
+    margin-bottom: 80px;
+  }
+  .usecases-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .usecase-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-lg);
+    padding: 26px 22px;
+    transition: all .2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .usecase-card:hover {
+    border-color: var(--border-bright);
+    background: var(--surface-2);
+    transform: translateY(-2px);
+  }
+  .usecase-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-md);
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+  }
+  .usecase-card h4 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 6px;
+  }
+  .usecase-card p {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  @media (max-width: 992px) {
+    .usecases-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 540px) {
+    .usecases-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- Section 8: Final CTA ---------- */
+  .final-cta-section {
+    margin-bottom: 80px;
+  }
+  .final-cta-banner {
+    position: relative;
+    border-radius: var(--r-xl);
+    padding: 44px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    background: linear-gradient(135deg, rgba(30, 58, 138, 0.7) 0%, rgba(15, 23, 42, 0.95) 45%, rgba(88, 28, 135, 0.6) 100%);
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(59, 130, 246, 0.15);
+    overflow: hidden;
+  }
+  .final-cta-banner::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: var(--r-xl);
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.5), transparent 40%, rgba(168, 85, 247, 0.4));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .final-cta-content h2 {
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 8px;
+    letter-spacing: -0.5px;
+  }
+  .final-cta-content p {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  .final-cta-buttons {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 900px) {
+    .final-cta-banner {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 36px 28px;
+    }
+    .final-cta-buttons {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top: 1px solid var(--border-subtle);
+    padding: 40px 0 48px;
+    background: #05070a;
+  }
+  .footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .footer-links {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .footer-links a {
+    color: var(--text-muted);
+    font-size: 13.5px;
+  }
+  .footer-links a:hover {
+    color: #fff;
+  }
+  .footer-tagline {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* ---------- Interactive Panels (Embed & Verify) ---------- */
+  .panel-container {
+    padding: 48px 0 80px;
+  }
+  .panel-head {
+    margin-bottom: 32px;
+  }
+  .panel-head h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    color: #fff;
+    margin: 0 0 8px;
+  }
+  .panel-head p {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 780px;
+    line-height: 1.6;
+  }
+
+  .app-cols {
+    display: grid;
+    grid-template-columns: 460px 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+  @media (max-width: 1024px) {
+    .app-cols { grid-template-columns: 1fr; }
+  }
+
+  .ui-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-xl);
+    padding: 28px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+    position: relative;
+  }
+  .ui-card h2 {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 20px;
+    font-weight: 600;
+  }
+
+  /* Forms & Inputs */
+  label.field { display: block; margin: 18px 0 0; }
+  label.field:first-child { margin-top: 0; }
+  label.field > span {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  label.field > span b { color: #fff; font-weight: 600; }
+
+  input[type=text], input[type=number], select, textarea {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border-bright);
+    color: #fff;
+    border-radius: var(--r-sm);
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 14px;
+    transition: all .15s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    background: var(--surface-3);
+  }
+  textarea { resize: vertical; min-height: 64px; font-family: var(--mono); font-size: 13px; }
+  ::placeholder { color: var(--text-muted); opacity: 1; }
+
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 520px) { .row-2 { grid-template-columns: 1fr; } }
+
+  .hint-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .fixed-val {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-bright);
+    border-radius: var(--r-sm);
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    color: var(--text-secondary);
+  }
+  .fixed-val b { color: #fff; font-weight: 600; }
+
+  /* Drop Zone */
+  label.drop {
+    display: block;
+    border: 2px dashed var(--border-bright);
+    border-radius: var(--r-lg);
+    padding: 32px 24px;
+    text-align: center;
+    cursor: pointer;
+    background: rgba(20, 28, 43, 0.4);
+    transition: all .2s ease;
+    margin-bottom: 20px;
+  }
+  label.drop:hover {
+    border-color: var(--accent);
+    background: rgba(56, 189, 248, 0.03);
+  }
+  label.drop.drag {
+    border-color: var(--accent);
+    background: rgba(56, 189, 248, 0.08);
+  }
+  label.drop strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  label.drop span {
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  label.drop .chosen {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--accent);
+    margin-top: 10px;
+    display: none;
+    word-break: break-all;
+    background: rgba(56, 189, 248, 0.08);
+    padding: 6px 12px;
+    border-radius: var(--r-sm);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+  }
+  label.drop.has .chosen { display: block; }
+
+  /* Action Buttons */
+  button.btn-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    border: 0;
+    border-radius: var(--r-pill);
+    font: 600 15px/1 var(--font);
+    cursor: pointer;
+    padding: 15px 24px;
+    color: #07090e;
+    background: #ffffff;
+    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.15);
+    transition: all .2s cubic-bezier(0.16, 1, 0.3, 1);
+    margin-top: 22px;
+  }
+  button.btn-primary:hover:not(:disabled) {
+    background: #f8fafc;
+    box-shadow: 0 6px 24px rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+  }
+  button.btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+  button.btn-quiet {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--text-secondary);
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  button.btn-quiet:hover {
+    color: #fff;
+    border-color: var(--accent);
+    background: rgba(56, 189, 248, 0.05);
+  }
+
+  .spin {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #07090e;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: -2px;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Notification Banners */
+  .banner {
+    border-radius: var(--r-md);
+    padding: 14px 18px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    margin-bottom: 20px;
+    display: none;
+    animation: fadeIn .2s;
+  }
+  .banner.show { display: block; }
+  .banner.ok { background: var(--ok-soft); border: 1px solid var(--ok-line); color: #ecfdf5; }
+  .banner.warn { background: var(--warn-soft); border: 1px solid var(--warn-line); color: #fffbeb; }
+  .banner.err { background: var(--err-soft); border: 1px solid var(--err-line); color: #fef2f2; }
+
+  /* Output Cards & Details */
+  .empty-state {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 24px 0;
+    text-align: center;
+    border: 1px dashed var(--border-card);
+    border-radius: var(--r-md);
+  }
+  .result-block {
+    margin-top: 22px;
+    border-top: 1px solid var(--border-card);
+    padding-top: 20px;
+  }
+  .result-block h3 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 14px;
+    font-weight: 600;
+  }
+
+  .kv-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 13.5px;
+  }
+  .kv-row:last-child { border-bottom: none; }
+  .kv-row .k { color: var(--text-secondary); }
+  .kv-row .v { font-family: var(--mono); text-align: right; color: #fff; word-break: break-all; }
+  .kv-row .v.big { font-size: 20px; font-weight: 700; color: var(--accent); }
+
+  .metrics-triad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .metric-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-md);
+    padding: 16px;
+  }
+  .metric-card .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .metric-card .v {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin-top: 4px;
+    letter-spacing: -0.5px;
+  }
+  .metric-card .u { font-size: 12px; color: var(--text-muted); font-weight: 400; }
+
+  .images-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+  }
+  @media (max-width: 768px) {
+    .metrics-triad { grid-template-columns: 1fr; }
+    .images-preview-grid { grid-template-columns: 1fr; }
+  }
+  figure { margin: 0; }
+  figure img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: contain;
+    border-radius: var(--r-md);
+    border: 1px solid var(--border-card);
+    background: #000;
+    display: block;
+  }
+  figcaption {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    text-align: center;
+  }
+
+  .bits-display {
+    font-family: var(--mono);
+    font-size: 11px;
+    word-break: break-all;
+    background: var(--surface-2);
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-sm);
+    padding: 12px 14px;
+    color: var(--text-secondary);
+    max-height: 110px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  table.data-table td {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  table.data-table tr:last-child td { border-bottom: none; }
+  table.data-table td:first-child { color: var(--text-secondary); }
+  table.data-table td:last-child { text-align: right; font-family: var(--mono); color: #fff; }
+
+  .download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 22px;
+    padding: 12px 22px;
+    border-radius: var(--r-pill);
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+    transition: all .2s ease;
+  }
+  .download-btn:hover {
+    background: rgba(56, 189, 248, 0.16);
+    border-color: var(--accent);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
+  .confirm-box {
+    border: 1px solid var(--ok-line);
+    background: var(--ok-soft);
+    border-radius: var(--r-lg);
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+  .confirm-box .who { font-size: 17px; font-weight: 700; color: #fff; margin-top: 6px; }
+  .confirm-box .why { color: var(--text-secondary); font-size: 13.5px; margin-top: 4px; }
+
+  details {
+    margin-top: 18px;
+    border: 1px solid var(--border-card);
+    border-radius: var(--r-md);
+    background: rgba(20, 28, 43, 0.3);
+  }
+  summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+    padding: 14px 16px;
+    list-style: none;
+    font-weight: 500;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸ "; color: var(--accent); font-size: 12px; margin-right: 4px; }
+  details[open] summary::before { content: "▾ "; }
+  details .inner { padding: 0 16px 16px; }
+
+  /* Modal for About / Research */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .modal-overlay.open { display: flex; animation: fadeIn .2s; }
+  .modal-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border-bright);
+    border-radius: var(--r-xl);
+    max-width: 640px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 36px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+    position: relative;
+  }
+  .modal-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .modal-close:hover { color: #fff; }
+
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
+<!-- Ambient Glow Layer -->
+<div class="bg-glow-layer" aria-hidden="true">
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+  <div class="bg-glow-3"></div>
+</div>
+
+<!-- ============ NAVBAR ============ -->
 <header class="topbar">
   <div class="wrap">
-    <a class="brand" href="#home" aria-label="Vestigia home"><b>Vestigia</b><span>DWT·SVD invisible watermarking</span></a>
-    <nav class="nav" aria-label="Primary">
-      <a href="#home" id="nav-home">Overview</a>
-      <a href="#embed" id="nav-embed">Embed</a>
-      <a href="#verify" id="nav-verify">Verify</a>
+    <div class="brand-group">
+      <a class="brand-logo" href="#home" aria-label="Vestigia home">
+        <!-- SVG Fingerprint Emblem -->
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="15" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1.2" />
+          <path d="M16 8C11.5817 8 8 11.5817 8 16C8 17.5 8.4 19 9.1 20.2" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" />
+          <path d="M23.5 18C23.8 17.4 24 16.7 24 16C24 11.5817 20.4183 8 16 8" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" />
+          <path d="M11.5 16C11.5 13.5147 13.5147 11.5 16 11.5C18.4853 11.5 20.5 13.5147 20.5 16C20.5 19 19.5 22 17.5 24" stroke="#60a5fa" stroke-width="1.8" stroke-linecap="round" />
+          <path d="M16 15C15.4477 15 15 15.4477 15 16C15 18.5 13.5 21 12 22.5" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" />
+          <path d="M16 19C16.5 20.5 16.2 22.2 15.5 24" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </a>
+      <div class="brand-text">
+        <a class="brand-title" href="#home">Vestigia</a>
+        <span class="brand-sub">DWT·SVD invisible watermarking</span>
+      </div>
+    </div>
+
+    <nav class="nav-menu" aria-label="Primary navigation">
+      <a href="#home" class="nav-item" id="nav-home">Overview</a>
+      <a href="#embed" class="nav-item" id="nav-embed">Embed</a>
+      <a href="#verify" class="nav-item" id="nav-verify">Verify</a>
+      <a href="#how-it-works" class="nav-item" id="nav-how">How it works</a>
+      <a href="#results-section" class="nav-item" id="nav-results">Results</a>
+      <a href="#about" class="nav-item" id="nav-about">About</a>
     </nav>
-    <div class="status" id="status" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="status-txt">connecting…</span></div>
+
+    <div class="topbar-right">
+      <div class="status-pill" id="status" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-txt">CPU · torch 2.14.0 · windowed_cnn</span>
+      </div>
+    </div>
   </div>
 </header>
 
 <main id="main">
 
-  <!-- ============ LANDING ============ -->
+  <!-- ==================== HOME / OVERVIEW PANEL ==================== -->
   <section id="home" class="panel on">
-    <div class="hero">
+    
+    <!-- Hero Section -->
+    <div class="hero-section">
       <div class="wrap">
-        <p class="eyebrow">Frozen Phase 6 embedder · blind Phase 8 / windowed decoder</p>
-        <h1>Embed an invisible ownership mark.<br />Verify it later — <em>no original image</em>.</h1>
-        <p class="lede">Vestigia modifies the DWT SVD spectrum so subtly the picture is effectively unchanged
-        (a fixed α&nbsp;=&nbsp;0.02), yet the watermark survives as its own reference. A blind CNN reads it
-        back from the distributed file alone and matches the recovered ID against a local registry.</p>
-        <div class="ctas">
-          <a class="cta primary" href="#embed"><span class="k">EMBED</span> Embed watermark</a>
-          <a class="cta ghost" href="#verify"><span class="k">VERIFY</span> Verify watermark</a>
+        <div class="hero-grid">
+          <!-- Left Column -->
+          <div class="hero-left">
+            <p class="hero-eyebrow">FROZEN PHASE 6 EMBEDDER · BLIND PHASE 8 / WINDOWED DECODER</p>
+            <h1 class="hero-title">
+              Your Images.<br />
+              Your Ownership.<br />
+              <span class="text-accent">Always Traceable.</span>
+            </h1>
+            <p class="hero-desc">
+              Vestigia embeds a cryptographic ownership mark directly into your images using a robust DWT-SVD pipeline. The watermark is invisible, requires no original image to verify, and survives real-world use.
+            </p>
+
+            <div class="hero-ctas">
+              <a class="cta-btn primary" href="#embed">
+                <span class="badge-tag">EMBED</span>
+                <span>Embed watermark</span>
+                <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 8h10M9 4l4 4-4 4"/>
+                </svg>
+              </a>
+              <a class="cta-btn secondary" href="#verify">
+                <span class="badge-tag">VERIFY</span>
+                <span>Verify watermark</span>
+                <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 8h10M9 4l4 4-4 4"/>
+                </svg>
+              </a>
+            </div>
+
+            <div class="hero-features">
+              <div class="feature-pill">
+                <div class="feature-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                </div>
+                <div class="feature-info">
+                  <span class="feature-label">Invisible</span>
+                  <span class="feature-sub">No visible changes</span>
+                </div>
+              </div>
+
+              <div class="feature-pill">
+                <div class="feature-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                </div>
+                <div class="feature-info">
+                  <span class="feature-label">Trustworthy</span>
+                  <span class="feature-sub">Prove ownership</span>
+                </div>
+              </div>
+
+              <div class="feature-pill">
+                <div class="feature-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                </div>
+                <div class="feature-info">
+                  <span class="feature-label">Robust</span>
+                  <span class="feature-sub">Survives real use</span>
+                </div>
+              </div>
+
+              <div class="feature-pill">
+                <div class="feature-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                  </svg>
+                </div>
+                <div class="feature-info">
+                  <span class="feature-label">AI-Powered</span>
+                  <span class="feature-sub">Blind verification</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Hero Visual -->
+          <div class="hero-right">
+            <div class="hero-visual-container">
+              <img src="/static/hero_visual_flawless.png" alt="Original Image vs Watermarked Image with frequency domain watermark" class="hero-visual-img" />
+            </div>
+            <div class="hero-cursive-note">Same image. More value.</div>
+          </div>
         </div>
-        <dl class="spec" aria-label="Product specification">
-          <div><dt>Payload</dt><dd>64-bit registry ID<small>4-bit text ID repeated 15×, majority-voted; or 8–1024 raw bits</small></dd></div>
-          <div><dt>Strength α</dt><dd>0.020 fixed<small>frozen multiplicative modulation, Haar → LL → SVD</small></dd></div>
-          <div><dt>Blind decoder</dt><dd id="spec-decoder">blind_cnn*<small>per-size Phase 8 CNN; windowed decoder opt-in</small></dd></div>
-          <div><dt>Original needed?</dt><dd>No<small>verification uses the watermarked file only</small></dd></div>
-        </dl>
       </div>
     </div>
+
+    <!-- Section 3: Capability Strip -->
     <div class="wrap">
-      <div class="steps">
-        <div class="step">
-          <div class="n">01</div>
-          <h2>Embed</h2>
-          <p>The Phase 6 DWT-SVD embedder writes your message's registry ID into the LL singular values at α&nbsp;0.02.
-          Payload evidence — embedded bits, recovered bits, BER, PSNR/SSIM — is returned from one call.</p>
-        </div>
-        <div class="step">
-          <div class="n">02</div>
-          <h2>Distribute</h2>
-          <p>Hand out the watermarked file. No key, no sidecar, no original — the watermark is self-contained
-          in the image spectrum and everything needed to verify it is registered locally.</p>
-        </div>
-        <div class="step">
-          <div class="n">03</div>
-          <h2>Verify</h2>
-          <p>Upload the image here. A blind decoder reconstructs the ID bits, the app recovers confidence and also
-          reports the confidence of the vote, then looks the ID up in the message registry for the ownership text.</p>
+      <div class="capability-strip">
+        <div class="capability-grid" aria-label="Product specifications">
+          <div class="cap-card">
+            <div class="cap-icon-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+            </div>
+            <div class="cap-content">
+              <span class="cap-label">Payload</span>
+              <span class="cap-value">64-bit registry ID</span>
+              <span class="cap-desc">4-bit text ID repeated 15×, majority-voted; or 8–1024 raw bits</span>
+            </div>
+          </div>
+
+          <div class="cap-card">
+            <div class="cap-icon-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </div>
+            <div class="cap-content">
+              <span class="cap-label">Strength α</span>
+              <span class="cap-value">0.020 (fixed)</span>
+              <span class="cap-desc">Frozen multiplicative modulation Haar → LL → SVD</span>
+            </div>
+          </div>
+
+          <div class="cap-card">
+            <div class="cap-icon-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4h-1a4 4 0 0 1-4 4 4 4 0 0 1-4-4H6a4 4 0 0 1-4-4v-2a4 4 0 0 1 4-4V6a4 4 0 0 1 4-4z"></path>
+              </svg>
+            </div>
+            <div class="cap-content">
+              <span class="cap-label">Blind Decoder</span>
+              <span class="cap-value" id="spec-decoder">windowed_cnn*</span>
+              <span class="cap-desc">model phase17_final · decoder windowed_cnn · checkpoint present</span>
+            </div>
+          </div>
+
+          <div class="cap-card">
+            <div class="cap-icon-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+            <div class="cap-content">
+              <span class="cap-label">Original Needed?</span>
+              <span class="cap-value">No</span>
+              <span class="cap-desc">Verification uses the watermarked file only</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- Section 4: How It Works -->
+    <div class="wrap" id="how-it-works">
+      <div class="section-header">
+        <div>
+          <span class="section-eyebrow">— HOW IT WORKS</span>
+          <h2 class="section-title">From image to proof — in three simple steps</h2>
+          <p class="section-sub">A powerful pipeline that embeds, preserves, and recovers your ownership mark.</p>
+        </div>
+        <a href="#pipeline-section" class="section-action-btn">
+          <span>Learn more</span>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        </a>
+      </div>
+
+      <div class="steps-row">
+        <div class="step-box">
+          <div class="step-top">
+            <div class="step-badge blue">1</div>
+            <div class="step-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+          </div>
+          <h3>Embed</h3>
+          <p>Your image is transformed using DWT + SVD and a 64-bit payload is embedded invisibly into the LL subband.</p>
+          <span class="step-pill-tag blue">FROZEN EMBEDDER</span>
+        </div>
+
+        <div class="step-connector">→</div>
+
+        <div class="step-box">
+          <div class="step-top">
+            <div class="step-badge purple">2</div>
+            <div class="step-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+          </div>
+          <h3>Distribute</h3>
+          <p>Share or publish your watermarked image. It looks identical to the naked eye, but carries your ownership mark.</p>
+          <span class="step-pill-tag purple">REAL-WORLD ROBUSTNESS</span>
+        </div>
+
+        <div class="step-connector">→</div>
+
+        <div class="step-box">
+          <div class="step-top">
+            <div class="step-badge teal">3</div>
+            <div class="step-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                <polyline points="9 12 11 14 15 10"></polyline>
+              </svg>
+            </div>
+          </div>
+          <h3>Verify</h3>
+          <p>Upload the image later to extract the hidden ID using our blind CNN decoder — without ever needing the original.</p>
+          <span class="step-pill-tag teal">NO ORIGINAL IMAGE NEEDED</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 5: Technical Pipeline (Under The Hood) -->
+    <div class="wrap" id="pipeline-section">
+      <div class="pipeline-section">
+        <div class="section-header" style="margin-bottom: 20px;">
+          <div>
+            <span class="section-eyebrow">— UNDER THE HOOD</span>
+            <h2 class="section-title">Discrete Wavelet Transform + SVD Pipeline</h2>
+            <p class="section-sub">A mathematical transform-domain architecture designed for invisible persistence and blind neural recovery.</p>
+          </div>
+        </div>
+
+        <div class="pipeline-track">
+          <div class="pipe-node">
+            <span class="pipe-node-title">INPUT IMAGE</span>
+            <span class="pipe-node-desc">Source RGB buffer</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">DWT</span>
+            <span class="pipe-node-desc">Single-level Haar</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">LL SUBBAND</span>
+            <span class="pipe-node-desc">Low-frequency band</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">SVD</span>
+            <span class="pipe-node-desc">Singular values σ_i</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">MODULATION</span>
+            <span class="pipe-node-desc">α = 0.020 fixed</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">WATERMARKED</span>
+            <span class="pipe-node-desc">Distributed media</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">BLIND CNN</span>
+            <span class="pipe-node-desc">Windowed 1D CNN</span>
+          </div>
+          <span class="pipe-arrow">→</span>
+
+          <div class="pipe-node">
+            <span class="pipe-node-title">REGISTRY</span>
+            <span class="pipe-node-desc">Ownership confirmed</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 6: Key Results / Metrics -->
+    <div class="wrap" id="results-section">
+      <div class="results-section">
+        <div class="section-header">
+          <div>
+            <span class="section-eyebrow">— VALIDATION BENCHMARKS</span>
+            <h2 class="section-title">Key Results (Windowed CNN Decoder)</h2>
+            <p class="section-sub">Measured on held-out DIV2K validation and test sets using frozen checkpoints.</p>
+          </div>
+          <button type="button" class="section-action-btn" onclick="openAboutModal()">
+            <span>View full details</span>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </button>
+        </div>
+
+        <div class="results-grid">
+          <div class="result-stat-card">
+            <div class="result-stat-val">77.78%</div>
+            <div class="result-stat-label">Test bit accuracy</div>
+          </div>
+          <div class="result-stat-card">
+            <div class="result-stat-val">22.22%</div>
+            <div class="result-stat-label">Bit error rate (BER)</div>
+          </div>
+          <div class="result-stat-card">
+            <div class="result-stat-val">77.41%</div>
+            <div class="result-stat-label">Precision</div>
+          </div>
+          <div class="result-stat-card">
+            <div class="result-stat-val">74.37%</div>
+            <div class="result-stat-label">Recall</div>
+          </div>
+          <div class="result-stat-card">
+            <div class="result-stat-val">75.86%</div>
+            <div class="result-stat-label">F1 score</div>
+          </div>
+          <div class="result-stat-card">
+            <div class="result-stat-val">96/100</div>
+            <div class="result-stat-label">Registry IDs recovered</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 7: Use Cases -->
+    <div class="wrap">
+      <div class="usecases-section">
+        <div class="section-header">
+          <div>
+            <span class="section-eyebrow">— USE CASES</span>
+            <h2 class="section-title">Built for authentic image security</h2>
+            <p class="section-sub">Protect intellectual property and ensure digital provenance across modern web platforms.</p>
+          </div>
+        </div>
+
+        <div class="usecases-grid">
+          <div class="usecase-card">
+            <div class="usecase-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M14.83 14.83a4 4 0 1 1 0-5.66"></path>
+              </svg>
+            </div>
+            <div>
+              <h4>Content Ownership</h4>
+              <p>Prove and protect your creative work with non-destructible embedded provenance tags.</p>
+            </div>
+          </div>
+
+          <div class="usecase-card">
+            <div class="usecase-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+              </svg>
+            </div>
+            <div>
+              <h4>Leak Tracing</h4>
+              <p>Trace unauthorized distribution back to specific recipients with individualized registry payloads.</p>
+            </div>
+          </div>
+
+          <div class="usecase-card">
+            <div class="usecase-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </div>
+            <div>
+              <h4>Provenance</h4>
+              <p>Verify authenticity and origin of critical imagery without transmitting the original confidential source.</p>
+            </div>
+          </div>
+
+          <div class="usecase-card">
+            <div class="usecase-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </div>
+            <div>
+              <h4>Research &amp; Education</h4>
+              <p>Benchmark state-of-the-art DWT-SVD transform domain schemes against blind CNN decoders.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 8: Final CTA Banner -->
+    <div class="wrap">
+      <div class="final-cta-section">
+        <div class="final-cta-banner">
+          <div class="final-cta-content">
+            <h2>Ready to protect your images?</h2>
+            <p>Start embedding your invisible watermark or verify an existing one.</p>
+          </div>
+          <div class="final-cta-buttons">
+            <a class="cta-btn primary" href="#embed">
+              <span class="badge-tag">EMBED</span>
+              <span>Embed watermark</span>
+              <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 8h10M9 4l4 4-4 4"/>
+              </svg>
+            </a>
+            <a class="cta-btn secondary" href="#verify">
+              <span class="badge-tag">VERIFY</span>
+              <span>Verify watermark</span>
+              <svg class="arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 8h10M9 4l4 4-4 4"/>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </section>
 
-  <!-- ============ EMBED ============ -->
+  <!-- ==================== EMBED PANEL ==================== -->
   <section id="embed" class="panel">
-    <div class="wrap">
+    <div class="wrap panel-container">
       <div class="panel-head">
-        <p class="eyebrow" style="margin:0 0 10px">01 · Blade the source</p>
-        <h1>Embed a watermark</h1>
-        <p>Choose an image and its watermark text. The text is registered to a 4-bit ID and that ID is repeated
-        15× across the 64-bit payload the embedder writes into the LL subband. The result panel shows the
-        registry entry, quality, reference-decoder recovery, and a reference payload to reuse in Verify.</p>
+        <p class="hero-eyebrow" style="margin: 0 0 12px">01 · ENCODE PIPELINE</p>
+        <h1>Embed an invisible watermark</h1>
+        <p>Choose an image and its watermark text. The text is registered to a 4-bit ID and repeated 15× across the 64-bit payload written into the LL singular values at frozen α&nbsp;=&nbsp;0.020.</p>
       </div>
-      <div class="cols">
-        <form class="card" id="form">
-          <h2>Input</h2>
+
+      <div class="app-cols">
+        <!-- Embed Form -->
+        <form class="ui-card" id="form">
+          <h2>Source Input</h2>
           <label class="drop" id="drop">
             <input type="file" id="file" accept="image/*" hidden />
             <strong>Click or drop an image</strong>
@@ -276,11 +1889,10 @@
           </label>
 
           <label class="field">
-            <span>Watermark text</span>
+            <span>Watermark text / ownership message</span>
             <textarea id="payload_text" placeholder="e.g. owner:alice; 2026-09-06"></textarea>
           </label>
-          <p class="hint" id="cap_hint">Registered locally as a 4-bit ID repeated 15× inside a 64-bit payload
-          (gear: the exact repetition &amp; kind are echoed into the Verify screen automatically).</p>
+          <p class="hint-text" id="cap_hint">Registered locally as a 4-bit ID repeated 15× inside a 64-bit payload (the exact repetition &amp; kind are automatically forwarded to Verify).</p>
 
           <details>
             <summary>Other payload sources</summary>
@@ -307,90 +1919,92 @@
                 <span>Payload size (bits)</span>
                 <select id="bit_length"></select>
               </label>
-              <p class="hint">The final model embeds at a <b>fixed α = 0.020</b>, Haar / LL. For non-message
-              payloads the blind decoder is available up to 128 bits.</p>
+              <p class="hint-text">The final model embeds at a <b>fixed α = 0.020</b>, Haar / LL. For non-message payloads the blind decoder is available up to 128 bits.</p>
             </div>
           </details>
 
           <label class="field">
             <span>Embedding strength α (frozen)</span>
-            <div class="fixed"><span>0.020</span><span class="dim">— fixed Phase 17 final-model selection, not adjustable</span></div>
+            <div class="fixed-val"><span>0.020</span><span class="dim">— fixed Phase 17 final-model selection, not adjustable</span></div>
           </label>
 
-          <button class="btn block" id="go" type="submit" disabled>Embed watermark</button>
+          <button class="btn-primary" id="go" type="submit" disabled>Embed watermark</button>
         </form>
 
-        <div class="card" id="results">
-          <h2>Result</h2>
+        <!-- Embed Results -->
+        <div class="ui-card" id="results">
+          <h2>Embedding Result</h2>
           <div class="banner" id="banner" role="status" aria-live="polite"></div>
-          <div class="empty" id="empty">Run an embed to see the registry entry, watermarked output, and metrics here.</div>
+          <div class="empty-state" id="empty">Run an embed to view the registry entry, watermarked output, and metrics here.</div>
 
           <div id="output" hidden>
-            <div class="block">
-              <h3>Registry entry</h3>
-              <div class="kv"><span class="k">Assigned ID</span><span class="v big" id="r_id">–</span></div>
-              <div class="kv"><span class="k">Payload</span><span class="v" id="r_desc">–</span></div>
-              <div class="kv"><span class="k">Recovery (reference decoder)</span><span class="v" id="r_status">–</span></div>
+            <div class="result-block" style="border-top: none; padding-top: 0;">
+              <h3>Registry Entry</h3>
+              <div class="kv-row"><span class="k">Assigned ID</span><span class="v big" id="r_id">–</span></div>
+              <div class="kv-row"><span class="k">Payload Description</span><span class="v" id="r_desc">–</span></div>
+              <div class="kv-row"><span class="k">Recovery (reference decoder)</span><span class="v" id="r_status">–</span></div>
             </div>
 
-            <div class="block">
-              <h3>Reference payload for verification</h3>
-              <div class="kv"><span class="k">text</span><span class="v" id="r_text">–</span></div>
-              <div class="kv"><span class="k">bit_length · repetition · kind</span><span class="v" id="r_fmt">–</span></div>
-              <button type="button" class="quiet" id="to-verify" style="margin-top:10px">Use in Verify →</button>
+            <div class="result-block">
+              <h3>Reference Payload for Verification</h3>
+              <div class="kv-row"><span class="k">Text</span><span class="v" id="r_text">–</span></div>
+              <div class="kv-row"><span class="k">bit_length · repetition · kind</span><span class="v" id="r_fmt">–</span></div>
+              <button type="button" class="btn-quiet" id="to-verify" style="margin-top: 12px;">Use in Verify →</button>
             </div>
 
-            <div class="metrics" style="margin-top:18px">
-              <div class="metric"><div class="k">PSNR</div><div class="v"><span id="m_psnr">–</span><span class="u"> dB</span></div></div>
-              <div class="metric"><div class="k">SSIM</div><div class="v" id="m_ssim">–</div></div>
-              <div class="metric"><div class="k">MSE</div><div class="v" id="m_mse">–</div></div>
+            <div class="metrics-triad">
+              <div class="metric-card"><div class="k">PSNR</div><div class="v"><span id="m_psnr">–</span><span class="u"> dB</span></div></div>
+              <div class="metric-card"><div class="k">SSIM</div><div class="v" id="m_ssim">–</div></div>
+              <div class="metric-card"><div class="k">MSE</div><div class="v" id="m_mse">–</div></div>
             </div>
 
-            <div class="images">
+            <div class="images-preview-grid">
               <figure><img id="img_original" alt="original image" /><figcaption>Original</figcaption></figure>
               <figure><img id="img_watermarked" alt="watermarked image" /><figcaption>Watermarked</figcaption></figure>
               <figure><img id="img_residual" alt="residual difference amplified 15x" /><figcaption>Residual (×15)</figcaption></figure>
             </div>
 
-            <div class="block">
-              <h3>Reference-decoder recovery</h3>
-              <table>
+            <div class="result-block">
+              <h3>Reference-Decoder Recovery</h3>
+              <table class="data-table">
                 <tr><td>Decoder</td><td id="r_decoder">–</td></tr>
                 <tr><td>Bit error rate (BER)</td><td id="r_ber">–</td></tr>
                 <tr><td>Bit accuracy</td><td id="r_acc">–</td></tr>
                 <tr><td>Normalized correlation (NC)</td><td id="r_nc">–</td></tr>
               </table>
-              <p class="hint">This non-blind reference needs the original — it reports how cleanly the bits went
-              in. The Verify screen instead uses the blind CNN, which needs nothing but the watermarked image.</p>
+              <p class="hint-text">This non-blind reference needs the original — it reports how cleanly the bits went in. The Verify screen instead uses the blind CNN, which needs nothing but the watermarked image.</p>
             </div>
 
-            <div class="block">
-              <h3>Embedded payload bits</h3>
-              <div class="bits" id="r_bits"></div>
-              <p class="hint">recovered bits</p>
-              <div class="bits" id="r_rbits"></div>
+            <div class="result-block">
+              <h3>Embedded Payload Bits</h3>
+              <div class="bits-display" id="r_bits"></div>
+              <p class="hint-text" style="margin-top: 8px;">Recovered bits</p>
+              <div class="bits-display" id="r_rbits"></div>
             </div>
 
-            <a class="cta ghost download" id="dl" href="#" download="watermarked.png">⬇ Download watermarked image</a>
+            <a class="download-btn" id="dl" href="#" download="watermarked.png">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Download watermarked image</span>
+            </a>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ VERIFY ============ -->
+  <!-- ==================== VERIFY PANEL ==================== -->
   <section id="verify" class="panel">
-    <div class="wrap">
+    <div class="wrap panel-container">
       <div class="panel-head">
-        <p class="eyebrow" style="margin:0 0 10px">02 · Read the blade</p>
-        <h1>Verify a watermark</h1>
-        <p>The watermarked image is the only input. The blind decoder reconstructs the payload, reports the
-        confidence of that reconstruction, and looks the recovered ID up in the local message registry.
-        No original image, key, or embedding metadata is required.</p>
+        <p class="hero-eyebrow" style="margin: 0 0 12px">02 · BLIND DECODER</p>
+        <h1>Verify an invisible watermark</h1>
+        <p>The watermarked image is the only input. The blind CNN decoder reconstructs the payload, reports the majority-vote confidence, and matches the recovered ID against the local message registry.</p>
       </div>
-      <div class="cols">
-        <form class="card" id="vform">
-          <h2>Watermarked image</h2>
+
+      <div class="app-cols">
+        <!-- Verify Form -->
+        <form class="ui-card" id="vform">
+          <h2>Watermarked Image</h2>
           <label class="drop" id="vdrop">
             <input type="file" id="vfile" accept="image/*" hidden />
             <strong>Click or drop the watermarked image</strong>
@@ -401,7 +2015,7 @@
           <details open>
             <summary>Payload format (usually pre-filled automatically)</summary>
             <div class="inner">
-              <div class="row">
+              <div class="row-2">
                 <label class="field">
                   <span>Payload size (bits)</span>
                   <input type="number" id="v_bits" value="64" min="1" max="1024" />
@@ -426,42 +2040,40 @@
                 <span>Reference bits (optional — enables BER / bit-accuracy scoring)</span>
                 <input type="text" id="v_exp_bits" class="mono" placeholder="paste the embedded bit string from Embed" spellcheck="false" />
               </label>
-              <p class="hint">Registry-ID payloads from the Embed step carry bit_length 64, repetition 15,
-              kind registry_id automatically. Leave the reference fields blank for a pure blind check —
-              BER has no meaning without the embedded reference bits.</p>
+              <p class="hint-text">Registry-ID payloads from the Embed step carry bit_length 64, repetition 15, kind registry_id automatically. Leave the reference fields blank for a pure blind check.</p>
             </div>
           </details>
 
-          <button class="btn block" id="vgo" type="submit" disabled>Verify watermark</button>
+          <button class="btn-primary" id="vgo" type="submit" disabled>Verify watermark</button>
         </form>
 
-        <div class="card" id="vresults">
-          <h2>Verification result</h2>
+        <!-- Verify Results -->
+        <div class="ui-card" id="vresults">
+          <h2>Verification Result</h2>
           <div class="banner" id="vbanner" role="status" aria-live="polite"></div>
-          <div class="empty" id="vempty">Upload a watermarked image and verify it to see the recovered ID,
-          confidence, BER (when a reference is given), and registry match here.</div>
+          <div class="empty-state" id="vempty">Upload a watermarked image and verify it to see the recovered ID, confidence, BER, and registry match here.</div>
 
           <div id="voutput" hidden>
-            <div id="vconfirm" class="confirm" hidden>
-              <div style="font-family:var(--mono);font-size:11px;letter-spacing:1.2px;color:var(--ok)">✓ WATERMARK DETECTED &amp; VERIFIED</div>
+            <div id="vconfirm" class="confirm-box" hidden>
+              <div style="font-family:var(--mono);font-size:11.5px;letter-spacing:1.2px;color:var(--ok);font-weight:600">✓ WATERMARK DETECTED &amp; VERIFIED</div>
               <div class="who" id="vwho">–</div>
               <div class="why" id="vwhy">–</div>
             </div>
 
-            <div class="block">
-              <h3>Detection</h3>
-              <div class="kv"><span class="k">Recovered ID</span><span class="v big" id="v_id">–</span></div>
-              <div class="kv"><span class="k">Registry match</span><span class="v" id="v_reg">–</span></div>
-              <div class="kv"><span class="k">Confidence (ID vote agreement)</span><span class="v" id="v_conf">–</span></div>
-              <div class="kv"><span class="k">Min bit confidence</span><span class="v" id="v_confmin">–</span></div>
-              <div class="kv"><span class="k">Decoder</span><span class="v" id="v_model">–</span></div>
-              <div class="kv" id="v_fb_row"><span class="k">Fallback note</span><span class="v" id="v_fallback">–</span></div>
-              <div class="kv"><span class="k">Detected payload</span><span class="v" id="v_status">–</span></div>
+            <div class="result-block" style="border-top: none; padding-top: 0;">
+              <h3>Detection Details</h3>
+              <div class="kv-row"><span class="k">Recovered ID</span><span class="v big" id="v_id">–</span></div>
+              <div class="kv-row"><span class="k">Registry match</span><span class="v" id="v_reg">–</span></div>
+              <div class="kv-row"><span class="k">Confidence (ID vote agreement)</span><span class="v" id="v_conf">–</span></div>
+              <div class="kv-row"><span class="k">Min bit confidence</span><span class="v" id="v_confmin">–</span></div>
+              <div class="kv-row"><span class="k">Decoder</span><span class="v" id="v_model">–</span></div>
+              <div class="kv-row" id="v_fb_row"><span class="k">Fallback note</span><span class="v" id="v_fallback">–</span></div>
+              <div class="kv-row"><span class="k">Detected payload</span><span class="v" id="v_status">–</span></div>
             </div>
 
-            <div class="block" id="v_scoring" hidden>
+            <div class="result-block" id="v_scoring" hidden>
               <h3>Scoring against reference</h3>
-              <table>
+              <table class="data-table">
                 <tr><td>Bit error rate (BER)</td><td id="v_ber">–</td></tr>
                 <tr><td>Bit accuracy</td><td id="v_acc">–</td></tr>
                 <tr><td>Text match</td><td id="v_tmatch">–</td></tr>
@@ -469,9 +2081,9 @@
               </table>
             </div>
 
-            <div class="block">
+            <div class="result-block">
               <h3>Recovered bit string</h3>
-              <div class="bits" id="v_bits_str"></div>
+              <div class="bits-display" id="v_bits_str"></div>
             </div>
           </div>
         </div>
@@ -481,10 +2093,62 @@
 
 </main>
 
+<!-- ============ ABOUT MODAL ============ -->
+<div class="modal-overlay" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeAboutModal()" aria-label="Close modal">&times;</button>
+    <p class="hero-eyebrow" style="margin-bottom: 8px;">ABOUT THE ARCHITECTURE</p>
+    <h2 id="about-title" style="font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 16px;">Vestigia DWT-SVD Watermarking</h2>
+    <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">
+      Vestigia is a transform-domain digital watermarking platform designed for invisible ownership attribution and robust blind verification.
+    </p>
+    <div style="background: var(--surface-2); border: 1px solid var(--border-card); border-radius: var(--r-md); padding: 18px; margin-bottom: 18px;">
+      <h4 style="margin: 0 0 8px; color: var(--accent); font-family: var(--mono); font-size: 12px; letter-spacing: 1px;">CORE SPECIFICATIONS</h4>
+      <ul style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 13.5px; line-height: 1.7;">
+        <li><strong>Transform:</strong> 1-level 2D Discrete Wavelet Transform (Haar)</li>
+        <li><strong>Subband:</strong> Low-Low (LL) approximation subband</li>
+        <li><strong>Modulation:</strong> SVD singular values modified with frozen multiplicative factor α = 0.020</li>
+        <li><strong>Payload:</strong> 4-bit registry ID repeated 15× (60/64 bits) with majority-vote consensus</li>
+        <li><strong>Blind Decoder:</strong> Windowed 1D CNN trained on DIV2K images — no original image needed</li>
+      </ul>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin: 0;">
+      Developed for computer vision security research and production provenance tracking.
+    </p>
+  </div>
+</div>
+
+<!-- ============ FOOTER ============ -->
 <footer>
   <div class="wrap">
-    <span class="mono">Vestigia · DWT-SVD invisible watermarking · Phase 7 app</span>
-    <span>Blind verification: <span id="ft-decoder">blind_cnn*</span> · <a href="/docs" style="color:var(--text-3)">API under /api</a></span>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a class="brand-logo" href="#home" style="width: 24px; height: 24px;">
+          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="15" stroke="rgba(56, 189, 248, 0.25)" stroke-width="1.2" />
+            <path d="M16 8C11.5817 8 8 11.5817 8 16C8 17.5 8.4 19 9.1 20.2" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" />
+            <path d="M23.5 18C23.8 17.4 24 16.7 24 16C24 11.5817 20.4183 8 16 8" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" />
+            <path d="M11.5 16C11.5 13.5147 13.5147 11.5 16 11.5C18.4853 11.5 20.5 13.5147 20.5 16C20.5 19 19.5 22 17.5 24" stroke="#60a5fa" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+        </a>
+        <span style="font-weight: 600; color: #fff;">Vestigia</span>
+        <span class="mono" style="font-size: 12px; color: var(--text-muted);">DWT·SVD invisible watermarking</span>
+      </div>
+
+      <div class="footer-links">
+        <a href="#home">Overview</a>
+        <a href="#embed">Embed</a>
+        <a href="#verify">Verify</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#results-section">Results</a>
+        <a href="#about" onclick="openAboutModal(); return false;">About</a>
+        <a href="/docs">API</a>
+      </div>
+
+      <div class="footer-tagline">
+        Built for research. Designed for a more trustworthy web. <span class="dim" style="margin-left: 8px;">Blind decoder: <span id="ft-decoder">blind_cnn*</span></span>
+      </div>
+    </div>
   </div>
 </footer>
 
@@ -494,52 +2158,83 @@ const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 let fileBlob = null, vfileBlob = null, INFO = null;
 
-/* ---------- hash router ---------- */
-const PANELS = ['home','embed','verify'];
+/* ---------- Modal controls ---------- */
+function openAboutModal(){ $('#about-modal').classList.add('open'); }
+function closeAboutModal(){ $('#about-modal').classList.remove('open'); }
+$('#about-modal').addEventListener('click', e => {
+  if (e.target === $('#about-modal')) closeAboutModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeAboutModal();
+});
+
+/* ---------- Hash router ---------- */
+const PANELS = ['home', 'embed', 'verify'];
 function route(){
-  const h = location.hash.replace(/^#/,'') || 'home';
-  const target = PANELS.includes(h) ? h : 'home';
+  const rawHash = location.hash.replace(/^#/, '') || 'home';
+  
+  // Check if hash is a sub-section on home page
+  if (['how-it-works', 'pipeline-section', 'results-section'].includes(rawHash)){
+    PANELS.forEach(p => {
+      const el = document.getElementById(p);
+      if (el) el.classList.toggle('on', p === 'home');
+    });
+    $$('.nav-item').forEach(a => a.classList.remove('active'));
+    if (rawHash === 'how-it-works' && $('#nav-how')) $('#nav-how').classList.add('active');
+    if (rawHash === 'results-section' && $('#nav-results')) $('#nav-results').classList.add('active');
+    const targetEl = document.getElementById(rawHash);
+    if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+
+  if (rawHash === 'about'){
+    openAboutModal();
+    return;
+  }
+
+  const target = PANELS.includes(rawHash) ? rawHash : 'home';
   PANELS.forEach(p => {
     const el = document.getElementById(p);
     if (el) el.classList.toggle('on', p === target);
   });
-  const nav = $$('.nav a');
-  nav.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#'+target));
-  const t = document.getElementById('nav-'+target);
-  if (t) t.classList.add('active');
+
+  $$('.nav-item').forEach(a => {
+    const href = a.getAttribute('href');
+    a.classList.toggle('active', href === '#' + target);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 window.addEventListener('hashchange', route);
 
-/* ---------- boot: health + model info ---------- */
+/* ---------- Boot: health + model info ---------- */
 async function boot(){
   let h = null, on = false;
-  try{
+  try {
     h = await (await fetch('/api/health')).json();
     on = true;
-  }catch{}
+  } catch{}
   const st = $('#status-txt');
-  if (on) st.textContent = (h.cuda ? 'GPU' : 'CPU') + ' · torch ' + (h.torch||'?');
+  if (on) st.textContent = (h.cuda ? 'GPU' : 'CPU') + ' · torch ' + (h.torch || '?');
   else st.textContent = 'offline';
   $('#status').classList.toggle('on', on);
 
-  try{
+  try {
     INFO = await (await fetch('/api/final-model/info')).json();
-  }catch{ INFO = null; }
+  } catch{ INFO = null; }
   if (INFO){
     const sizes = INFO.extraction && INFO.extraction.blind ? INFO.extraction.blind.available_sizes : [];
     const wmOn = INFO.decoder_mode === 'windowed_cnn' && INFO.windowed_cnn && INFO.windowed_cnn.checkpoint_available;
-    const decName = sizes.length ? 'blind_cnn_' + sizes.join('/') + 'bit' : 'blind_cnn — no checkpoints present';
-    $('#spec-decoder').innerHTML = (wmOn ? 'windowed_cnn*' : decName) +
-      '<small>model ' + INFO.model + ' · decoder ' + INFO.decoder_mode +
-      (INFO.windowed_cnn && INFO.windowed_cnn.checkpoint_available ? ' · windowed checkpoint present' : ' · no windowed checkpoint') + '</small>';
+    const decName = sizes.length ? 'blind_cnn_' + sizes.join('/') + 'bit' : 'blind_cnn';
+    $('#spec-decoder').innerHTML = (wmOn ? 'windowed_cnn*' : decName);
     $('#ft-decoder').textContent = INFO.decoder_mode;
     st.textContent += ' · ' + INFO.decoder_mode;
   }
 }
 
-/* ---------- generic drop zones ---------- */
+/* ---------- Drop zones ---------- */
 function wireDrop(labelSel, inputSel, chosenSel, onSet){
   const label = $(labelSel), input = $(inputSel);
+  if (!label || !input) return;
   label.tabIndex = 0;
   label.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); input.click(); }
@@ -550,24 +2245,26 @@ function wireDrop(labelSel, inputSel, chosenSel, onSet){
     if (!f || !f.type.startsWith('image/')) return;
     onSet(f);
     label.classList.add('has');
-    $(chosenSel).textContent = f.name + '  ·  ' + Math.round(f.size/1024) + ' KB';
+    $(chosenSel).textContent = f.name + '  ·  ' + Math.round(f.size / 1024) + ' KB';
   }
   input.addEventListener('change', e => set(e.target.files && e.target.files[0]));
-  ['dragover','dragenter'].forEach(ev => label.addEventListener(ev, e => { e.preventDefault(); label.classList.add('drag'); }));
-  ['dragleave','drop'].forEach(ev => label.addEventListener(ev, e => { e.preventDefault(); label.classList.remove('drag'); }));
+  ['dragover', 'dragenter'].forEach(ev => label.addEventListener(ev, e => { e.preventDefault(); label.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev => label.addEventListener(ev, e => { e.preventDefault(); label.classList.remove('drag'); }));
   label.addEventListener('drop', e => {
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     set(f);
   });
 }
+
 function banner(el, kind, msg){
   const b = $(el);
+  if (!b) return;
   b.className = 'banner' + (kind ? ' ' + kind : '');
   b.textContent = msg;
   b.classList.toggle('show', !!msg);
 }
 
-/* ---------- payload source toggles ---------- */
+/* ---------- Payload source toggles ---------- */
 if ($('#payload_source')){
   $('#payload_source').addEventListener('change', e => {
     const v = e.target.value;
@@ -577,7 +2274,7 @@ if ($('#payload_source')){
   });
 }
 
-/* ---------- embed ---------- */
+/* ---------- Embed form submission ---------- */
 wireDrop('#drop', '#file', '#chosen', f => {
   fileBlob = f;
   $('#go').disabled = false;
@@ -598,18 +2295,18 @@ $('#form').addEventListener('submit', async e => {
   fd.append('payload_bits', $('#payload_bits').value);
   fd.append('bit_length', $('#bit_length').value || '64');
 
-  try{
-    const res = await fetch('/api/final-model/embed', {method:'POST', body: fd});
+  try {
+    const res = await fetch('/api/final-model/embed', { method: 'POST', body: fd });
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
     renderEmbed(d);
     const q = d.quality_metrics;
     banner('#banner', 'ok', 'Done — PSNR ' + fmt(q.psnr_db) + ' dB · SSIM ' + q.ssim.toFixed(4) +
-      ' · reference recovery ' + (d.recovery_metrics.status||'') +
+      ' · reference recovery ' + (d.recovery_metrics.status || '') +
       ' (BER ' + fmt(d.recovery_metrics.ber) + ')');
-  }catch(err){
+  } catch(err){
     banner('#banner', 'err', err.message);
-  }finally{
+  } finally {
     btn.disabled = false; btn.textContent = label;
   }
 });
@@ -640,7 +2337,7 @@ function renderEmbed(d){
   $('#to-verify').onclick = () => prefillVerify(d);
 }
 
-/* ---------- verify ---------- */
+/* ---------- Verify form submission ---------- */
 wireDrop('#vdrop', '#vfile', '#vchosen', f => {
   vfileBlob = f;
   $('#vgo').disabled = false;
@@ -656,12 +2353,12 @@ function prefillVerify(d){
   if (p && p.bit_string) $('#v_exp_bits').value = p.bit_string;
   const wm = d.download && d.download.data_uri || (d.images && d.images.watermarked);
   if (wm) fetch(wm).then(r => r.blob()).then(blob => {
-    vfileBlob = new File([blob], 'watermarked.png', {type: 'image/png'});
+    vfileBlob = new File([blob], 'watermarked.png', { type: 'image/png' });
     $('#vchosen').textContent = 'watermarked.png (from the embed just above)';
     $('#vdrop').classList.add('has');
     $('#vgo').disabled = false;
   });
-  scrollTo({top: 0, behavior: 'smooth'});
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 $('#vform').addEventListener('submit', async e => {
@@ -679,14 +2376,14 @@ $('#vform').addEventListener('submit', async e => {
   if ($('#v_exp_text').value.trim()) fd.append('expected_text', $('#v_exp_text').value.trim());
   if ($('#v_exp_bits').value.trim()) fd.append('expected_bits', $('#v_exp_bits').value.trim());
 
-  try{
-    const res = await fetch('/api/final-model/extract/blind', {method:'POST', body: fd});
+  try {
+    const res = await fetch('/api/final-model/extract/blind', { method: 'POST', body: fd });
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
     renderVerify(d);
-  }catch(err){
+  } catch(err){
     renderVerify({ error: err.message });
-  }finally{
+  } finally {
     btn.disabled = false; btn.textContent = label;
   }
 });
@@ -752,7 +2449,7 @@ function renderVerify(d){
   if (fb){
     $('#v_fallback').textContent = fb;
     banner('#vbanner', 'warn', 'Decoder note: ' + fb);
-  }else{
+  } else {
     banner('#vbanner', reliable ? 'ok' : 'warn',
       reliable
         ? '✓ Watermark detected' + (isRegistered ? ' — ID ' + r.registry_id + ' "' + r.text + '"' : ' — "' + r.text + '"') +
@@ -774,12 +2471,12 @@ function renderVerify(d){
   }
 }
 
-/* ---------- helpers ---------- */
+/* ---------- Helpers ---------- */
 const fmt = v => v == null ? '—' : (typeof v === 'number' ? +v.toFixed(4) : v);
 const fmt4 = v => v == null ? '—' : Number(v).toFixed(4);
 
 async function fillOptions(){
-  try{
+  try {
     const o = await (await fetch('/api/options')).json();
     const fill = (sel, vals, def) => {
       const el = $(sel); if (!el) return;
@@ -787,8 +2484,8 @@ async function fillOptions(){
       for (const v of vals){ const op = document.createElement('option'); op.value = v; op.textContent = v; el.appendChild(op); }
       if (def != null) el.value = def;
     };
-    fill('#bit_length', (o.bit_lengths||[]).map(String), '64');
-  }catch{}
+    fill('#bit_length', (o.bit_lengths || []).map(String), '64');
+  } catch{}
 }
 
 boot();
