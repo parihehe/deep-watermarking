@@ -1,0 +1,61 @@
+# Experimental windowed 1D-CNN blind watermark extractor (research-paper style).
+#
+# This is an ISOLATED experimental decoder. It is separate from the production
+# Phase 8 decoder (configs/cnn_extractor.yaml) and is NOT wired into the default
+# app path. See docs/windowed_cnn.md.
+#
+# The `embed` section controls how training data is SYNTHESISED by calling the
+# frozen Phase 6 embed() - it does not alter the frozen embedding rule.
+#
+# The `model.window_size` is the paper's 15-value local singular-value window.
+windowed_cnn:
+
+  # Parameters passed to the frozen Phase 6 DWT-SVD embedder to create
+  # (watermarked image, per-bit window, bit label) training samples.
+  embed:
+    wavelet: haar
+    mode: symmetric
+    subband: LL
+    extra_subbands: []          # LL alone holds 128 bits for a 256x256 image
+    start_sv_index: 0
+    alpha: 0.02                 # same operating point as the production decoder
+
+  payload:
+    bit_length: 64
+
+  data:
+    processed_root: data/processed/div2k_256
+    train_split: train
+    validation_split: validation
+    test_split: test
+    train_limit: null           # null => all 700 training images
+    val_limit: null             # null => all 100 validation images
+    image_size: 256
+
+  model:
+    window_size: 15             # the paper's 15 singular values per bit
+    start_sv_index: 0
+    conv1_channels: 32          # paper: 32 filters
+    conv2_channels: 64          # paper: 64 filters
+    kernel_size: 3              # paper: kernel 3, same padding
+    fc_units: 64                # paper: Dense(64, ReLU)
+    dropout_conv: 0.3           # paper: ~0.3
+    dropout_fc: 0.5             # paper: ~0.5
+    image_size: 256
+
+  train:
+    epochs: 50                  # paper reference: 50
+    batch_size: 64              # paper reference: 64
+    lr: 0.001
+    weight_decay: 0.0001
+    grad_clip: 1.0
+    early_stop_patience: 10
+    num_workers: 0              # on-the-fly embedding runs in the main process
+    device: auto                # "auto" -> cuda if available else cpu
+    seed: 20260906
+    resume: null                # path to a checkpoint to resume from, or null
+
+  output:
+    checkpoint_dir: models/experimental/windowed_cnn
+    results_dir: results/windowed_cnn
+    run_name: windowed_cnn
